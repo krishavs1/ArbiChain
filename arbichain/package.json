@@ -1,0 +1,44 @@
+{
+  "name": "arbichain",
+  "version": "1.0.0",
+  "description": "Autonomous escrow and dispute resolution protocol for AI agent commerce using TRON and Filecoin",
+  "main": "index.js",
+  "scripts": {
+    "compile": "tronbox compile",
+    "migrate": "tronbox migrate --network nile",
+    "deploy": "node scripts/deploy.js",
+    "demo": "node scripts/demo.js",
+    "dev": "next dev --prefix frontend",
+    "build": "next build --prefix frontend",
+    "start": "next start --prefix frontend",
+    "test": "tronbox test"
+  },
+  "keywords": [
+    "tron",
+    "filecoin",
+    "escrow",
+    "ai-agents",
+    "dispute-resolution",
+    "blockchain",
+    "arbichain"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "tronweb": "^5.3.2",
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^3.3.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "tronbox": "^3.1.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.0.0"
+  }
+}
