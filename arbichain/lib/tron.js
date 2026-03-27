@@ -184,12 +184,14 @@ async function getTransactionInfo(tronWeb, txId) {
  * @param {number} interval - Polling interval in ms
  * @returns {Promise<Object>} Confirmed transaction info
  */
-async function waitForConfirmation(tronWeb, txId, maxAttempts = 20, interval = 3000) {
+async function waitForConfirmation(tronWeb, txId, maxAttempts = 40, interval = 3000) {
   for (let i = 0; i < maxAttempts; i++) {
-    const info = await tronWeb.trx.getTransactionInfo(txId);
-    if (info && info.id) {
-      return info;
-    }
+    try {
+      const info = await tronWeb.trx.getTransactionInfo(txId);
+      if (info && info.id) {
+        return info;
+      }
+    } catch {}
     await new Promise(resolve => setTimeout(resolve, interval));
   }
   throw new Error(`Transaction ${txId} not confirmed after ${maxAttempts} attempts`);
