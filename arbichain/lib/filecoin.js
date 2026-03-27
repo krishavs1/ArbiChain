@@ -65,7 +65,7 @@ async function initSynapse() {
     console.log(`[Synapse] Network: ${network}`);
 
     // Check USDFC balance
-    const balance = await synapseInstance.payments.getBalance();
+    const balance = await synapseInstance.payments.balance();
     console.log(`[Synapse] USDFC Balance: ${ethers.formatUnits(balance, 18)} USDFC`);
 
     if (balance === 0n) {
@@ -120,8 +120,8 @@ async function setupPayments(depositAmount = '2.5') {
   // USDFC token addresses (hardcoded since SDK returns symbol not address)
   const networkKey = network === 'mainnet' ? 'mainnet' : 'calibration';
   const USDFC_ADDRESSES = {
-    calibration: '0x80B98d3aa09ffff255c3ba4A241111Ff1262F045',
-    mainnet: '0x80B98d3aa09ffff255c3ba4A241111Ff1262F045' // TODO: update for mainnet
+    calibration: '0xb3042734b608a1B16e9e86B374A3f3e389B4cDf0',
+    mainnet: '0xb3042734b608a1B16e9e86B374A3f3e389B4cDf0' // TODO: update for mainnet
   };
   const usdfcAddress = USDFC_ADDRESSES[networkKey];
 
@@ -152,7 +152,8 @@ async function setupPayments(depositAmount = '2.5') {
 
   // Approve Warm Storage service (formerly Pandora)
   const warmStorageAddress = CONTRACT_ADDRESSES.PANDORA_SERVICE?.[networkKey] ||
-    CONTRACT_ADDRESSES.WARM_STORAGE_SERVICE?.[networkKey];
+    CONTRACT_ADDRESSES.WARM_STORAGE_SERVICE?.[networkKey] ||
+    CONTRACT_ADDRESSES.WARM_STORAGE?.[networkKey];
 
   if (warmStorageAddress) {
     console.log('[Synapse] Approving Warm Storage service...');
@@ -160,11 +161,13 @@ async function setupPayments(depositAmount = '2.5') {
 
     const rateAllowance = ethers.parseUnits('10', 18);    // 10 USDFC per epoch
     const lockupAllowance = ethers.parseUnits('100', 18); // 100 USDFC max lockup
+    const maxLockupPeriod = 0n; // 0 = no max lockup period restriction
 
     const approveTx = await synapse.payments.approveService(
       warmStorageAddress,
       rateAllowance,
-      lockupAllowance
+      lockupAllowance,
+      maxLockupPeriod
     );
     console.log(`[Synapse] Approve TX: ${approveTx.hash}`);
     await approveTx.wait();
@@ -175,7 +178,7 @@ async function setupPayments(depositAmount = '2.5') {
   }
 
   // Check final balance
-  const finalBalance = await synapse.payments.getBalance();
+  const finalBalance = await synapse.payments.balance();
   console.log(`[Synapse] Deposited balance: ${ethers.formatUnits(finalBalance, 18)} USDFC`);
 
   console.log('\n✅ Synapse setup complete! You can now upload files.');
@@ -378,7 +381,7 @@ async function getStatus() {
       };
     }
 
-    const balance = await synapse.payments.getBalance();
+    const balance = await synapse.payments.balance();
     return {
       provider: 'synapse',
       configured: true,
