@@ -8,9 +8,9 @@
     "migrate": "tronbox migrate --network nile",
     "deploy": "node scripts/deploy.js",
     "demo": "node scripts/demo.js",
-    "dev": "next dev --prefix frontend",
-    "build": "next build --prefix frontend",
-    "start": "next start --prefix frontend",
+    "dev": "cd frontend && next dev",
+    "build": "cd frontend && next build",
+    "start": "cd frontend && next start",
     "test": "tronbox test"
   },
   "keywords": [
