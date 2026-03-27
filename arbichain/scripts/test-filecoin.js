@@ -87,13 +87,22 @@ async function main() {
   console.log('\n' + '═'.repeat(50));
   console.log('✅ All tests passed!\n');
 
-  if (status.ready) {
+  const usedMock = uploadResult.provider === 'mock' ||
+    taskSpec.provider === 'mock' ||
+    deliverable.provider === 'mock' ||
+    evidence.provider === 'mock';
+
+  if (!status.ready) {
+    console.log('ℹ️  Tests passed with mock storage.');
+    console.log('   Run setup-synapse.js for permanent Filecoin storage.\n');
+  } else if (usedMock) {
+    console.log('⚠️  Synapse is configured, but uploads fell back to mock storage.');
+    console.log('   This usually means provider-side permission/routing issues (e.g., 403).');
+    console.log('   Add FILECOIN_AUTHORIZATION in .env and retry.\n');
+  } else {
     console.log('🎉 Real Filecoin storage is working!');
     console.log('   Your data is permanently stored on Filecoin with on-chain proofs.');
     console.log(`   CommP: ${uploadResult.commp}\n`);
-  } else {
-    console.log('ℹ️  Tests passed with mock storage.');
-    console.log('   Run setup-synapse.js for permanent Filecoin storage.\n');
   }
 }
 

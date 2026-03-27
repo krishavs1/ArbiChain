@@ -1,6 +1,6 @@
 /**
  * ArbiChain - Filecoin Storage Utilities
- * Powered by Synapse SDK for Filecoin Onchain Cloud
+ * Powered by Synapse SDK v0.40+ for Filecoin Onchain Cloud
  *
  * Features:
  * - On-chain verifiable storage proofs (PDP)
@@ -9,35 +9,34 @@
  */
 
 require('dotenv').config();
-const { ethers } = require('ethers');
 
-// ============ Configuration ============
+const MIN_UPLOAD_BYTES = 127;
 
-const CONFIG = {
-  calibration: {
-    rpcUrl: 'https://api.calibration.node.glif.io/rpc/v1',
-    chainId: 314159,
-    explorer: 'https://calibration.filfox.info'
-  },
-  mainnet: {
-    rpcUrl: 'https://api.node.glif.io/rpc/v1',
-    chainId: 314,
-    explorer: 'https://filfox.info'
-  }
-};
-
-// In-memory store for mock uploads
 const mockStore = new Map();
 
-// Synapse instances (lazy initialized)
 let synapseInstance = null;
 let isSetupComplete = false;
 
-// ============ Synapse SDK ============
+// ============ Synapse SDK (v0.40+) ============
 
-/**
- * Initialize Synapse SDK with payment setup
- */
+async function getSynapseChain() {
+  const { calibration, mainnet } = await import('@filoz/synapse-sdk');
+  const network = process.env.FILECOIN_NETWORK || 'calibration';
+  return network === 'mainnet' ? mainnet : calibration;
+}
+
+async function createSynapseClient() {
+  const { Synapse } = await import('@filoz/synapse-sdk');
+  const { privateKeyToAccount } = await import('viem/accounts');
+
+  const pk = process.env.FILECOIN_PRIVATE_KEY;
+  if (!pk) return null;
+
+  const account = privateKeyToAccount(pk);
+  const chain = await getSynapseChain();
+  return { synapse: Synapse.create({ chain, account }), account };
+}
+
 async function initSynapse() {
   if (synapseInstance && isSetupComplete) return synapseInstance;
 
@@ -48,36 +47,31 @@ async function initSynapse() {
   }
 
   try {
-    const { Synapse, RPC_URLS, TOKENS, CONTRACT_ADDRESSES } = await import('@filoz/synapse-sdk');
+    const result = await createSynapseClient();
+    if (!result) return null;
 
+    const { synapse, account } = result;
     const network = process.env.FILECOIN_NETWORK || 'calibration';
-    const rpcUrl = network === 'mainnet' ? RPC_URLS.mainnet.http : RPC_URLS.calibration.http;
 
     console.log('[Synapse] Initializing SDK...');
-
-    synapseInstance = await Synapse.create({
-      privateKey: privateKey,
-      rpcURL: rpcUrl
-    });
-
-    const wallet = new ethers.Wallet(privateKey);
-    console.log(`[Synapse] Connected as: ${wallet.address}`);
+    console.log(`[Synapse] Connected as: ${account.address}`);
     console.log(`[Synapse] Network: ${network}`);
 
-    // Check USDFC balance
-    const balance = await synapseInstance.payments.balance();
-    console.log(`[Synapse] USDFC Balance: ${ethers.formatUnits(balance, 18)} USDFC`);
+    const info = await synapse.payments.accountInfo();
+    const { formatUnits } = await import('viem');
+    const balanceStr = formatUnits(info.funds, 18);
+    console.log(`[Synapse] USDFC Balance: ${balanceStr} USDFC`);
 
-    if (balance === 0n) {
+    if (info.funds === 0n) {
       console.log('[Synapse] No USDFC deposited. Get tokens from:');
       console.log('         https://forest-explorer.chainsafe.dev/faucet/calibnet_usdfc');
       console.log('         Then run: node scripts/setup-synapse.js');
       return null;
     }
 
+    synapseInstance = synapse;
     isSetupComplete = true;
-    return synapseInstance;
-
+    return synapse;
   } catch (error) {
     console.error('[Synapse] Init failed:', error.message);
     return null;
@@ -85,163 +79,97 @@ async function initSynapse() {
 }
 
 /**
- * Setup Synapse payments (deposit + approve)
- * Run this once after getting USDFC from faucet
+ * Setup Synapse payments (deposit USDFC).
+ * The v0.40 SDK handles service approval automatically on upload.
  */
-async function setupPayments(depositAmount = '2.5') {
-  const privateKey = process.env.FILECOIN_PRIVATE_KEY;
-  if (!privateKey) {
-    throw new Error('FILECOIN_PRIVATE_KEY not set');
-  }
+async function setupPayments(depositAmount = '5') {
+  const result = await createSynapseClient();
+  if (!result) throw new Error('FILECOIN_PRIVATE_KEY not set');
 
-  const { Synapse, RPC_URLS, TOKENS, CONTRACT_ADDRESSES } = await import('@filoz/synapse-sdk');
+  const { synapse, account } = result;
+  const { parseUnits, formatUnits } = await import('viem');
 
-  const network = process.env.FILECOIN_NETWORK || 'calibration';
-  const rpcUrl = network === 'mainnet' ? RPC_URLS.mainnet.http : RPC_URLS.calibration.http;
+  console.log(`[Synapse] Setting up payments...`);
+  console.log(`[Synapse] Address: ${account.address}`);
 
-  console.log('[Synapse] Setting up payments...');
+  const walletBal = await synapse.payments.walletBalance();
+  console.log(`[Synapse] Wallet USDFC: ${formatUnits(walletBal, 18)}`);
 
-  const synapse = await Synapse.create({
-    privateKey: privateKey,
-    rpcURL: rpcUrl
-  });
-
-  // Get address from private key using ethers
-  const wallet = new ethers.Wallet(privateKey);
-  const address = wallet.address;
-  console.log(`[Synapse] Address: ${address}`);
-
-  // Check current USDFC wallet balance (not deposited yet)
-  const httpRpcUrl = network === 'mainnet'
-    ? 'https://api.node.glif.io/rpc/v1'
-    : 'https://api.calibration.node.glif.io/rpc/v1';
-  const provider = new ethers.JsonRpcProvider(httpRpcUrl);
-
-  // USDFC token addresses (hardcoded since SDK returns symbol not address)
-  const networkKey = network === 'mainnet' ? 'mainnet' : 'calibration';
-  const USDFC_ADDRESSES = {
-    calibration: '0xb3042734b608a1B16e9e86B374A3f3e389B4cDf0',
-    mainnet: '0xb3042734b608a1B16e9e86B374A3f3e389B4cDf0' // TODO: update for mainnet
-  };
-  const usdfcAddress = USDFC_ADDRESSES[networkKey];
-
-  console.log(`[Synapse] USDFC token address: ${usdfcAddress}`);
-
-  const erc20Abi = ['function balanceOf(address) view returns (uint256)'];
-  const usdfc = new ethers.Contract(usdfcAddress, erc20Abi, provider);
-  const walletBalance = await usdfc.balanceOf(address);
-
-  console.log(`[Synapse] Wallet USDFC: ${ethers.formatUnits(walletBalance, 18)}`);
-
-  if (walletBalance === 0n) {
+  if (walletBal === 0n) {
     console.log('\n❌ No USDFC in wallet!');
     console.log('   Get USDFC from: https://forest-explorer.chainsafe.dev/faucet/calibnet_usdfc');
-    console.log(`   Your address: ${address}`);
+    console.log(`   Your address: ${account.address}`);
     return false;
   }
 
-  // Deposit USDFC
-  const amount = ethers.parseUnits(depositAmount, 18);
+  const amount = parseUnits(depositAmount, 18);
   console.log(`[Synapse] Depositing ${depositAmount} USDFC...`);
 
-  // Pass USDFC token - SDK expects the token object or address
-  const depositTx = await synapse.payments.deposit(amount);
-  console.log(`[Synapse] Deposit TX: ${depositTx.hash}`);
-  await depositTx.wait();
-  console.log('[Synapse] Deposit confirmed!');
+  const depositTx = await synapse.payments.deposit({ amount });
+  console.log(`[Synapse] Deposit TX: ${depositTx}`);
 
-  // Approve Warm Storage service (formerly Pandora)
-  const warmStorageAddress = CONTRACT_ADDRESSES.PANDORA_SERVICE?.[networkKey] ||
-    CONTRACT_ADDRESSES.WARM_STORAGE_SERVICE?.[networkKey] ||
-    CONTRACT_ADDRESSES.WARM_STORAGE?.[networkKey];
+  console.log('[Synapse] Waiting for confirmation...');
+  await new Promise(r => setTimeout(r, 45000));
 
-  if (warmStorageAddress) {
-    console.log('[Synapse] Approving Warm Storage service...');
-    console.log(`[Synapse] Service address: ${warmStorageAddress}`);
-
-    const rateAllowance = ethers.parseUnits('10', 18);    // 10 USDFC per epoch
-    const lockupAllowance = ethers.parseUnits('100', 18); // 100 USDFC max lockup
-    const maxLockupPeriod = 0n; // 0 = no max lockup period restriction
-
-    const approveTx = await synapse.payments.approveService(
-      warmStorageAddress,
-      rateAllowance,
-      lockupAllowance,
-      maxLockupPeriod
-    );
-    console.log(`[Synapse] Approve TX: ${approveTx.hash}`);
-    await approveTx.wait();
-    console.log('[Synapse] Service approved!');
-  } else {
-    console.log('[Synapse] Warning: Could not find Warm Storage service address');
-    console.log('[Synapse] Available addresses:', JSON.stringify(CONTRACT_ADDRESSES, null, 2));
-  }
-
-  // Check final balance
-  const finalBalance = await synapse.payments.balance();
-  console.log(`[Synapse] Deposited balance: ${ethers.formatUnits(finalBalance, 18)} USDFC`);
-
+  const info = await synapse.payments.accountInfo();
+  console.log(`[Synapse] Deposited balance: ${formatUnits(info.funds, 18)} USDFC`);
   console.log('\n✅ Synapse setup complete! You can now upload files.');
   return true;
 }
 
-/**
- * Get Synapse instance for storage operations
- */
 async function getStorage() {
-  const synapse = await initSynapse();
-  return synapse;
+  return await initSynapse();
 }
 
 // ============ Upload Functions ============
 
-/**
- * Upload JSON to Filecoin
- */
+function padPayload(data) {
+  if (data.length >= MIN_UPLOAD_BYTES) return data;
+  const padded = new Uint8Array(MIN_UPLOAD_BYTES);
+  padded.set(data);
+  return padded;
+}
+
 async function uploadJson(data, options = {}) {
   const jsonString = JSON.stringify(data, null, 2);
-  const bytes = new TextEncoder().encode(jsonString);
-
-  return await uploadBytes(bytes, { ...options, contentType: 'application/json' });
+  const raw = new TextEncoder().encode(jsonString);
+  return await uploadBytes(raw, { ...options, contentType: 'application/json' });
 }
 
-/**
- * Upload bytes to Filecoin
- */
 async function uploadBytes(data, options = {}) {
   const synapse = await getStorage();
+  if (synapse) {
+    try {
+      const payload = padPayload(data);
+      console.log(`[Synapse] Uploading ${payload.length} bytes...`);
+      const result = await synapse.storage.upload(payload);
+      console.log('[Synapse] Upload successful!');
 
-  if (!synapse) {
-    console.log('[Synapse] Falling back to mock storage');
-    return createMockUploadResult(data, options);
+      const pieceCid = typeof result.pieceCid === 'object' && result.pieceCid['/']
+        ? result.pieceCid['/']
+        : String(result.pieceCid);
+
+      console.log(`[Synapse] PieceCID: ${pieceCid}`);
+
+      return {
+        cid: pieceCid,
+        commp: pieceCid,
+        size: data.length,
+        provider: 'synapse',
+        network: process.env.FILECOIN_NETWORK || 'calibration',
+        timestamp: Date.now(),
+        copies: result.copies || [],
+        retrievalUrl: result.copies?.[0]?.retrievalUrl || null
+      };
+    } catch (error) {
+      console.error('[Synapse] Upload failed:', error.message);
+    }
   }
 
-  try {
-    console.log(`[Synapse] Uploading ${data.length} bytes...`);
-
-    const result = await synapse.storage.upload(data);
-
-    console.log('[Synapse] Upload successful!');
-    console.log(`[Synapse] PieceCID: ${result.pieceCid}`);
-
-    return {
-      cid: result.pieceCid,
-      commp: result.pieceCid,
-      size: data.length,
-      provider: 'synapse',
-      network: process.env.FILECOIN_NETWORK || 'calibration',
-      timestamp: Date.now(),
-      dataSetId: result.dataSetId || null
-    };
-  } catch (error) {
-    console.error('[Synapse] Upload failed:', error.message);
-    return createMockUploadResult(data, options);
-  }
+  console.log('[Filecoin] Falling back to mock storage');
+  return createMockUploadResult(data, options);
 }
 
-/**
- * Create mock upload for development
- */
 function createMockUploadResult(content, options = {}) {
   const contentStr = content instanceof Uint8Array
     ? new TextDecoder().decode(content)
@@ -277,13 +205,9 @@ function generateMockHash(str) {
 
 // ============ Retrieve Functions ============
 
-/**
- * Retrieve content by CID/CommP
- */
 async function retrieve(cid, options = {}) {
   if (!cid) throw new Error('CID required');
 
-  // Check mock store
   if (mockStore.has(cid)) {
     const stored = mockStore.get(cid);
     let content = stored.content;
@@ -293,7 +217,6 @@ async function retrieve(cid, options = {}) {
     return { content, cid, provider: 'mock-store', retrievedAt: Date.now() };
   }
 
-  // Try Synapse download
   const synapse = await initSynapse();
   if (synapse) {
     try {
@@ -381,12 +304,14 @@ async function getStatus() {
       };
     }
 
-    const balance = await synapse.payments.balance();
+    const info = await synapse.payments.accountInfo();
+    const { formatUnits } = await import('viem');
+
     return {
       provider: 'synapse',
       configured: true,
       ready: true,
-      balance: ethers.formatUnits(balance, 18) + ' USDFC',
+      balance: formatUnits(info.funds, 18) + ' USDFC',
       network: process.env.FILECOIN_NETWORK || 'calibration'
     };
   } catch (error) {
@@ -416,6 +341,4 @@ module.exports = {
   retrieve,
   retrieveJson,
   exists,
-
-  CONFIG
 };
