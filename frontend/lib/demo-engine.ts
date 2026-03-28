@@ -4,14 +4,21 @@
  */
 
 import path from 'path';
+import fs from 'fs';
 
-const ROOT = path.resolve(process.cwd(), '..');
+// When running locally via `cd frontend && next dev`, cwd is frontend/ so ROOT = ..
+// On Railway, cwd is the repo root itself, so ROOT = cwd
+const _cwd = process.cwd();
+const ROOT = fs.existsSync(path.join(_cwd, 'lib', 'tron.js')) ? _cwd : path.resolve(_cwd, '..');
 
 // Bypass webpack's static module resolution for runtime requires
 const _require = eval('require') as NodeRequire;
 
 function loadEnv() {
-  _require('dotenv').config({ path: path.join(ROOT, '.env') });
+  const envPath = path.join(ROOT, '.env');
+  if (fs.existsSync(envPath)) {
+    _require('dotenv').config({ path: envPath });
+  }
 }
 
 function getTronLib() {
