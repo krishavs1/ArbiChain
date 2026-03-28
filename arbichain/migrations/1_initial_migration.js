@@ -24,7 +24,7 @@ module.exports = async function (deployer, network, accounts) {
   // In production, this should be a multi-sig or DAO address
   const arbitratorAddress = (await reputationGate.owner.call());
   console.log(`\n2. Deploying Escrow with arbitrator: ${arbitratorAddress}...`);
-  await deployer.deploy(Escrow, arbitratorAddress);
+  await deployer.deploy(Escrow, arbitratorAddress, reputationGate.address);
   const escrow = await Escrow.deployed();
   console.log(`   Escrow deployed at: ${escrow.address}`);
 

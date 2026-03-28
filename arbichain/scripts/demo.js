@@ -19,10 +19,10 @@ const EXPLORER = process.env.TRON_NETWORK === 'mainnet'
 // ============ ABIs ============
 
 const ESCROW_ABI = [
-  { inputs:[{name:'taskId',type:'bytes32'},{name:'seller',type:'address'},{name:'taskSpecCID',type:'string'}], name:'createTask', stateMutability:'payable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'},{name:'seller',type:'address'},{name:'taskSpecCID',type:'string'},{name:'deliverByTimestamp',type:'uint256'},{name:'reviewWindowSeconds',type:'uint256'}], name:'createTask', stateMutability:'payable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'},{name:'deliverableCID',type:'string'}], name:'submitDeliverable', stateMutability:'nonpayable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'}], name:'approveDeliverable', stateMutability:'nonpayable', type:'function' },
-  { inputs:[{name:'taskId',type:'bytes32'}], name:'openDispute', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'},{name:'reason',type:'uint8'}], name:'openDisputeByBuyer', stateMutability:'nonpayable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'},{name:'ruling',type:'uint8'}], name:'resolveDispute', stateMutability:'nonpayable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'}], name:'getTask', outputs:[{components:[
     {name:'buyer',type:'address'},{name:'seller',type:'address'},{name:'amount',type:'uint256'},
@@ -119,7 +119,8 @@ async function runHappyPath(buyerTw, sellerTw, escrowBuyer, escrowSeller, repGat
 
   console.log('     Locking funds in TRON escrow...');
   const amountSun = buyerTw.toSun(DEMO_AMOUNT_TRX);
-  const tx1 = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid).send({ callValue: amountSun, feeLimit: 100000000 });
+  const deliverBy = Math.floor(Date.now() / 1000) + 86400;
+  const tx1 = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid, deliverBy, 3600).send({ callValue: amountSun, feeLimit: 100000000 });
   await waitForConfirmation(buyerTw, tx1);
   info('TRON TX', tx1);
   link('Explorer', tx1);
@@ -183,11 +184,7 @@ The evolution from PoW to PoS reflects the broader maturation of blockchain tech
   info('TRON TX', tx3);
   link('Explorer', tx3);
 
-  // Record task completion on reputation contract
-  console.log('     Recording task completion on ReputationGate...');
-  const tx4 = await repGate.recordTaskCompletion(buyerAddr, sellerAddr, amountSun).send({ feeLimit: 50000000 });
-  await waitForConfirmation(repGateTw, tx4);
-  ok('Funds released to seller. Reputations updated.');
+  ok('Funds released to seller. Reputations updated by Escrow.');
 
   // Print final state
   const finalTask = await getTaskOnChain(escrowBuyer, buyerTw, taskId);
@@ -230,7 +227,8 @@ async function runDisputePath(buyerTw, sellerTw, arbTw, escrowBuyer, escrowSelle
 
   console.log('     Locking funds in TRON escrow...');
   const amountSun = buyerTw.toSun(DEMO_AMOUNT_TRX);
-  const tx1 = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid).send({ callValue: amountSun, feeLimit: 100000000 });
+  const deliverBy = Math.floor(Date.now() / 1000) + 86400;
+  const tx1 = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid, deliverBy, 3600).send({ callValue: amountSun, feeLimit: 100000000 });
   await waitForConfirmation(buyerTw, tx1);
   info('TRON TX', tx1);
   link('Explorer', tx1);
@@ -276,16 +274,11 @@ async function runDisputePath(buyerTw, sellerTw, arbTw, escrowBuyer, escrowSelle
   console.log('     Review: REJECTED — grossly under word count, no citations');
 
   console.log('     Opening dispute on-chain...');
-  const tx3 = await escrowBuyer.openDispute(taskId).send({ feeLimit: 50000000 });
+  const tx3 = await escrowBuyer.openDisputeByBuyer(taskId, 1).send({ feeLimit: 50000000 });
   await waitForConfirmation(buyerTw, tx3);
   info('TRON TX', tx3);
   link('Explorer', tx3);
-
-  // Record dispute opened on reputation
-  console.log('     Recording dispute on ReputationGate...');
-  const txDO = await repGate.recordDisputeOpened(buyerAddr, sellerAddr).send({ feeLimit: 50000000 });
-  await waitForConfirmation(repGateTw, txDO);
-  ok('Dispute opened. Seller receives preliminary reputation penalty.');
+  ok('Dispute opened. Reputation update recorded by Escrow.');
 
   await sleep(2000);
 
@@ -335,11 +328,7 @@ async function runDisputePath(buyerTw, sellerTw, arbTw, escrowBuyer, escrowSelle
   info('TRON TX', tx4);
   link('Explorer', tx4);
 
-  // Record dispute resolution on reputation
-  console.log('     Recording dispute resolution on ReputationGate...');
-  const txDR = await repGate.recordDisputeResolution(buyerAddr, sellerAddr).send({ feeLimit: 50000000 });
-  await waitForConfirmation(repGateTw, txDR);
-  ok('Dispute resolved. Buyer refunded. Seller reputation drops significantly.');
+  ok('Dispute resolved. Buyer refunded. Reputation updated by Escrow.');
 
   // Print final state
   const finalTask = await getTaskOnChain(escrowBuyer, buyerTw, taskId);

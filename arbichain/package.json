@@ -11,7 +11,8 @@
     "dev": "cd frontend && next dev",
     "build": "cd frontend && next build",
     "start": "cd frontend && next start",
-    "test": "tronbox test"
+    "test": "tronbox test",
+    "test:api-smoke": "node scripts/smoke-api.js"
   },
   "keywords": [
     "tron",

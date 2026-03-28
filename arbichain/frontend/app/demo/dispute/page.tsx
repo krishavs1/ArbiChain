@@ -25,10 +25,10 @@ const steps: Step[] = [
       "Seller submits work that does not meet requirements (for demo purposes)",
   },
   {
-    id: "open-dispute",
-    label: "Open Dispute",
+    id: "seller-escalate-silence",
+    label: "Seller Escalates Buyer Silence",
     description:
-      "Buyer disputes the deliverable, triggering arbitration process",
+      "After review window expires, seller escalates to dispute for buyer silence",
   },
   {
     id: "resolve",
@@ -96,7 +96,7 @@ export default function DisputePathPage() {
       <SidebarInset>
         <Header
           title="Dispute Path Demo"
-          description="Walk through a disputed task with arbitration flow"
+          description="Walk through a disputed task with seller escalation and arbitration"
         />
         <main className="flex-1 p-6">
           <div className="grid gap-6 lg:grid-cols-2">
@@ -164,10 +164,10 @@ export default function DisputePathPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">
-                    This demo simulates a dispute scenario where the seller
-                    submits work that does not meet the task requirements. The
-                    arbitrator analyzes the evidence and rules in favor of the
-                    buyer, triggering a refund.
+                    This demo simulates a production-style path where the
+                    buyer does not respond within the review window and the
+                    seller escalates. Wait at least 60 seconds after
+                    deliverable submission before running the escalation step.
                   </p>
                 </CardContent>
               </Card>

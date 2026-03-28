@@ -318,8 +318,8 @@ export default function ReputationPage() {
                 ) : null}
 
                 <p className="mt-4 text-center text-sm text-muted-foreground">
-                  These terms are calculated based on the current reputation of
-                  the demo buyer and seller.
+                  These terms are enforced by Escrow at task creation based on
+                  the current reputation of the buyer and seller.
                 </p>
               </CardContent>
             </Card>

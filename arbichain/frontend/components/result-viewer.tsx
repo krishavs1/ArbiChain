@@ -24,6 +24,14 @@ interface ResultViewerProps {
 export function ResultViewer({ result, title, className }: ResultViewerProps) {
   const [showRaw, setShowRaw] = useState(false)
   const winner = result.winner ? String(result.winner).toLowerCase() : null
+  const reviewWindowSeconds =
+    typeof result.reviewWindowSeconds === "number"
+      ? result.reviewWindowSeconds
+      : null
+  const deliverBy =
+    typeof result.deliverBy === "number"
+      ? new Date((result.deliverBy as number) * 1000).toLocaleString()
+      : null
 
   const getHighlightedFields = () => {
     const highlights: { label: string; value: string; icon: React.ReactNode }[] =
@@ -168,6 +176,20 @@ export function ResultViewer({ result, title, className }: ResultViewerProps) {
           </div>
         )}
 
+        {deliverBy && (
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <span className="text-sm text-muted-foreground">Delivery Deadline</span>
+            <span className="font-mono text-xs">{deliverBy}</span>
+          </div>
+        )}
+
+        {reviewWindowSeconds !== null && (
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <span className="text-sm text-muted-foreground">Review Window</span>
+            <span className="font-mono text-sm">{reviewWindowSeconds}s</span>
+          </div>
+        )}
+
         {result.wordCount && (
           <div className="flex items-center justify-between rounded-lg border p-3">
             <span className="text-sm text-muted-foreground">Word Count</span>
@@ -187,6 +209,22 @@ export function ResultViewer({ result, title, className }: ResultViewerProps) {
             <p className="mt-1 text-muted-foreground">
               {result.reason as string}
             </p>
+          </div>
+        )}
+
+        {(result.disputeOpenedBy || result.disputeReason) && (
+          <div className="rounded-lg border p-3 text-sm">
+            <p className="font-medium">Dispute Metadata</p>
+            {result.disputeOpenedBy && (
+              <p className="mt-1 text-muted-foreground">
+                Opened by: {String(result.disputeOpenedBy)}
+              </p>
+            )}
+            {result.disputeReason && (
+              <p className="text-muted-foreground">
+                Reason code: {String(result.disputeReason)}
+              </p>
+            )}
           </div>
         )}
 

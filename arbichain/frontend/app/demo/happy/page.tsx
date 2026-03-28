@@ -16,7 +16,7 @@ const steps: Step[] = [
     id: "create-task",
     label: "Create Task",
     description:
-      "Buyer creates a task with requirements stored on Filecoin, escrows funds on TRON",
+      "Buyer creates task with on-chain delivery/review deadlines, escrows funds on TRON",
   },
   {
     id: "submit-deliverable",
@@ -90,7 +90,7 @@ export default function HappyPathPage() {
       <SidebarInset>
         <Header
           title="Happy Path Demo"
-          description="Walk through a successful task completion flow"
+          description="Walk through successful completion with enforceable protocol deadlines"
         />
         <main className="flex-1 p-6">
           <div className="grid gap-6 lg:grid-cols-2">

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { disputeCreateTask, disputeSubmitGarbage, disputeOpenDispute, disputeResolve } from '@/lib/demo-engine';
+import {
+  disputeCreateTask,
+  disputeSubmitGarbage,
+  disputeOpenDispute,
+  disputeSellerEscalateSilence,
+  disputeResolve
+} from '@/lib/demo-engine';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -18,6 +24,9 @@ export async function POST(req: NextRequest) {
         break;
       case 'open-dispute':
         result = await disputeOpenDispute();
+        break;
+      case 'seller-escalate-silence':
+        result = await disputeSellerEscalateSilence();
         break;
       case 'resolve':
         result = await disputeResolve();

@@ -31,10 +31,13 @@ function getTypesLib() {
 const EXPLORER = 'https://nile.tronscan.org';
 
 const ESCROW_ABI = [
-  { inputs:[{name:'taskId',type:'bytes32'},{name:'seller',type:'address'},{name:'taskSpecCID',type:'string'}], name:'createTask', stateMutability:'payable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'},{name:'seller',type:'address'},{name:'taskSpecCID',type:'string'},{name:'deliverByTimestamp',type:'uint256'},{name:'reviewWindowSeconds',type:'uint256'}], name:'createTask', stateMutability:'payable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'},{name:'deliverableCID',type:'string'}], name:'submitDeliverable', stateMutability:'nonpayable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'}], name:'approveDeliverable', stateMutability:'nonpayable', type:'function' },
-  { inputs:[{name:'taskId',type:'bytes32'}], name:'openDispute', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'},{name:'reason',type:'uint8'}], name:'openDisputeByBuyer', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'},{name:'reason',type:'uint8'}], name:'openDisputeBySeller', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'}], name:'escalateBuyerSilence', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'}], name:'cancelForMissedDelivery', stateMutability:'nonpayable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'},{name:'ruling',type:'uint8'}], name:'resolveDispute', stateMutability:'nonpayable', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'}], name:'getTask', outputs:[{components:[
     {name:'buyer',type:'address'},{name:'seller',type:'address'},{name:'amount',type:'uint256'},
@@ -42,6 +45,8 @@ const ESCROW_ABI = [
     {name:'state',type:'uint8'},{name:'ruling',type:'uint8'},
     {name:'createdAt',type:'uint256'},{name:'deliveredAt',type:'uint256'},{name:'resolvedAt',type:'uint256'}
   ],name:'',type:'tuple'}], stateMutability:'view', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'}], name:'getTaskDeadlines', outputs:[{name:'deliverBy',type:'uint256'},{name:'reviewBy',type:'uint256'},{name:'reviewWindow',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'}], name:'getTaskDisputeMeta', outputs:[{name:'openedBy',type:'address'},{name:'reason',type:'uint8'}], stateMutability:'view', type:'function' },
   { inputs:[], name:'arbitrator', outputs:[{name:'',type:'address'}], stateMutability:'view', type:'function' },
 ];
 
@@ -94,7 +99,7 @@ let disputeDelivCid: string | null = null;
 
 export async function getAgents() {
   const { buyerTw, sellerTw, arbTw, tronLib } = await getInstances();
-  const { repGate, ownerTw } = await getInstances();
+  const { repGate } = await getInstances();
 
   const buyerAddr = buyerTw.defaultAddress.base58;
   const sellerAddr = sellerTw.defaultAddress.base58;
@@ -165,7 +170,9 @@ export async function happyCreateTask() {
   happySpecCid = specUpload.cid;
 
   const amountSun = buyerTw.toSun(10);
-  const tx = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid).send({ callValue: amountSun, feeLimit: 100000000 });
+  const deliverBy = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+  const reviewWindow = 10 * 60;
+  const tx = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid, deliverBy, reviewWindow).send({ callValue: amountSun, feeLimit: 100000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
 
   return {
@@ -177,6 +184,8 @@ export async function happyCreateTask() {
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
     amount: '10 TRX',
+    deliverBy,
+    reviewWindowSeconds: reviewWindow,
   };
 }
 
@@ -231,23 +240,29 @@ The evolution from PoW to PoS reflects the broader maturation of blockchain tech
 export async function happyApprove() {
   if (!currentHappyTaskId) throw new Error('Run create-task first');
 
-  const { buyerTw, sellerTw, escrowBuyer, repGate, ownerTw, tronLib } = await getInstances();
-  const buyerAddr = buyerTw.defaultAddress.base58;
-  const sellerAddr = sellerTw.defaultAddress.base58;
+  const { buyerTw, escrowBuyer, tronLib } = await getInstances();
 
   const tx = await escrowBuyer.approveDeliverable(currentHappyTaskId).send({ feeLimit: 50000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
-
-  const amountSun = buyerTw.toSun(10);
-  const txRep = await repGate.recordTaskCompletion(buyerAddr, sellerAddr, amountSun).send({ feeLimit: 50000000 });
-  await tronLib.waitForConfirmation(ownerTw, txRep);
 
   return {
     taskId: currentHappyTaskId,
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
-    repTxHash: txRep,
-    action: 'Funds released to seller. Reputations updated.',
+    action: 'Funds released to seller. Reputation was updated by Escrow on-chain.',
+  };
+}
+
+export async function happyCancelForMissedDelivery() {
+  if (!currentHappyTaskId) throw new Error('Run create-task first');
+  const { buyerTw, escrowBuyer, tronLib } = await getInstances();
+  const tx = await escrowBuyer.cancelForMissedDelivery(currentHappyTaskId).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(buyerTw, tx);
+  return {
+    taskId: currentHappyTaskId,
+    txHash: tx,
+    explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
+    action: 'Buyer cancelled task after missed seller delivery deadline.',
   };
 }
 
@@ -273,7 +288,9 @@ export async function disputeCreateTask() {
   disputeSpecCid = specUpload.cid;
 
   const amountSun = buyerTw.toSun(10);
-  const tx = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid).send({ callValue: amountSun, feeLimit: 100000000 });
+  const deliverBy = Math.floor(Date.now() / 1000) + (12 * 60 * 60);
+  const reviewWindow = 60;
+  const tx = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid, deliverBy, reviewWindow).send({ callValue: amountSun, feeLimit: 100000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
 
   return {
@@ -285,6 +302,8 @@ export async function disputeCreateTask() {
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
     amount: '10 TRX',
+    deliverBy,
+    reviewWindowSeconds: reviewWindow,
   };
 }
 
@@ -326,34 +345,41 @@ export async function disputeSubmitGarbage() {
 export async function disputeOpenDispute() {
   if (!currentDisputeTaskId) throw new Error('Run create-task first');
 
-  const { buyerTw, sellerTw, escrowBuyer, repGate, ownerTw, tronLib } = await getInstances();
-  const buyerAddr = buyerTw.defaultAddress.base58;
-  const sellerAddr = sellerTw.defaultAddress.base58;
+  const { buyerTw, escrowBuyer, tronLib } = await getInstances();
 
-  const tx = await escrowBuyer.openDispute(currentDisputeTaskId).send({ feeLimit: 50000000 });
+  const tx = await escrowBuyer.openDisputeByBuyer(currentDisputeTaskId, 1).send({ feeLimit: 50000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
-
-  const txRep = await repGate.recordDisputeOpened(buyerAddr, sellerAddr).send({ feeLimit: 50000000 });
-  await tronLib.waitForConfirmation(ownerTw, txRep);
 
   return {
     taskId: currentDisputeTaskId,
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
     reason: 'Deliverable does not meet requirements — 16 words vs 500 required',
+    disputeOpenedBy: 'Buyer',
+  };
+}
+
+export async function disputeSellerEscalateSilence() {
+  if (!currentDisputeTaskId) throw new Error('Run create-task first');
+  const { sellerTw, escrowSeller, tronLib } = await getInstances();
+  const tx = await escrowSeller.escalateBuyerSilence(currentDisputeTaskId).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(sellerTw, tx);
+  return {
+    taskId: currentDisputeTaskId,
+    txHash: tx,
+    explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
+    reason: 'Buyer review window expired; seller escalated dispute.',
+    disputeOpenedBy: 'Seller',
   };
 }
 
 export async function disputeResolve() {
   if (!currentDisputeTaskId || !disputeSpecCid || !disputeDelivCid) throw new Error('Run previous steps first');
 
-  const { buyerTw, sellerTw, arbTw, escrowArb, repGate, ownerTw, tronLib } = await getInstances();
+  const { arbTw, escrowArb, tronLib } = await getInstances();
   const fil = getFilecoinLib();
-  const buyerAddr = buyerTw.defaultAddress.base58;
-  const sellerAddr = sellerTw.defaultAddress.base58;
   const arbAddr = arbTw.defaultAddress.base58;
 
-  const arbSpec = await fil.retrieveJson(disputeSpecCid);
   const arbDeliv = await fil.retrieveJson(disputeDelivCid);
 
   const wordCount = arbDeliv.content?.body?.split(/\s+/).length || 0;
@@ -387,9 +413,6 @@ export async function disputeResolve() {
   const tx = await escrowArb.resolveDispute(currentDisputeTaskId, 0).send({ feeLimit: 100000000 });
   await tronLib.waitForConfirmation(arbTw, tx);
 
-  const txRep = await repGate.recordDisputeResolution(buyerAddr, sellerAddr).send({ feeLimit: 50000000 });
-  await tronLib.waitForConfirmation(ownerTw, txRep);
-
   return {
     taskId: currentDisputeTaskId,
     analysis,
@@ -420,8 +443,13 @@ export async function getReputationTerms() {
 
 export async function getTaskState(taskId: string) {
   const { buyerTw, escrowBuyer } = await getInstances();
-  const labels = ['Created', 'Funded', 'Delivered', 'Approved', 'Disputed', 'Resolved'];
-  const t = await escrowBuyer.getTask(taskId).call();
+  const labels = ['Created', 'Funded', 'Delivered', 'Approved', 'Disputed', 'Resolved', 'Cancelled'];
+  const reasons = ['None', 'QualityIssue', 'BuyerSilence', 'SellerAbuse', 'ScopeChange', 'Other'];
+  const [t, deadlines, disputeMeta] = await Promise.all([
+    escrowBuyer.getTask(taskId).call(),
+    escrowBuyer.getTaskDeadlines(taskId).call(),
+    escrowBuyer.getTaskDisputeMeta(taskId).call(),
+  ]);
   return {
     buyer: buyerTw.address.fromHex(t.buyer),
     seller: buyerTw.address.fromHex(t.seller),
@@ -431,5 +459,10 @@ export async function getTaskState(taskId: string) {
     state: Number(t.state),
     stateLabel: labels[Number(t.state)] || 'Unknown',
     ruling: Number(t.ruling),
+    deliverBy: Number(deadlines.deliverBy),
+    reviewBy: Number(deadlines.reviewBy),
+    reviewWindow: Number(deadlines.reviewWindow),
+    disputeOpenedBy: disputeMeta.openedBy ? buyerTw.address.fromHex(disputeMeta.openedBy) : null,
+    disputeReason: reasons[Number(disputeMeta.reason)] || 'Unknown',
   };
 }

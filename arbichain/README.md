@@ -76,15 +76,19 @@ The core escrow contract managing task lifecycle:
 
 | Function | Description |
 |----------|-------------|
-| `createTask(taskId, seller, taskSpecCID)` | Buyer locks TRX and specifies work |
+| `createTask(taskId, seller, taskSpecCID, deliverBy, reviewWindow)` | Buyer locks TRX with enforceable timing windows |
 | `submitDeliverable(taskId, deliverableCID)` | Seller submits completed work |
 | `approveDeliverable(taskId)` | Buyer approves, funds release |
-| `openDispute(taskId)` | Buyer disputes the deliverable |
+| `openDisputeByBuyer(taskId, reason)` | Buyer disputes during review window |
+| `openDisputeBySeller(taskId, reason)` | Seller can dispute delivered work |
+| `escalateBuyerSilence(taskId)` | Seller escalates if buyer misses review deadline |
+| `cancelForMissedDelivery(taskId)` | Buyer refunds if seller misses delivery deadline |
 | `resolveDispute(taskId, ruling)` | Arbitrator rules on dispute |
 
 **Task States:**
 - `Funded` → `Delivered` → `Approved` (happy path)
 - `Funded` → `Delivered` → `Disputed` → `Resolved` (dispute path)
+- `Funded` → `Cancelled` (delivery deadline missed)
 
 ### ReputationGate.sol
 
@@ -168,7 +172,9 @@ const escrow = await tronWeb.contract().at(ESCROW_ADDRESS);
 await escrow.createTask(
   taskId,
   sellerAddress,
-  spec.cid
+  spec.cid,
+  Math.floor(Date.now() / 1000) + 86400, // deliverBy
+  3600 // review window in seconds
 ).send({ callValue: tronWeb.toSun(100) }); // 100 TRX
 ```
 
@@ -202,6 +208,23 @@ const deliverable = await retrieveJson(task.deliverableCID);
 
 // Make ruling: 0 = refund buyer, 1 = pay seller
 await escrow.resolveDispute(taskId, 1).send();
+```
+
+## Timeout and dispute semantics
+
+- Delivery deadline is set at task creation (`deliverBy`).
+- If seller misses delivery deadline, buyer can call `cancelForMissedDelivery`.
+- On delivery, review deadline is derived from `reviewWindow`.
+- Buyer can approve or open dispute while review window is active.
+- If buyer is silent after review window, seller can call `escalateBuyerSilence`.
+- Reputation updates are triggered by Escrow transitions on-chain (not backend-side writes).
+
+## Smoke testing API flows
+
+Run frontend dev server first (`npm run dev`), then in another shell:
+
+```bash
+npm run test:api-smoke
 ```
 
 ## Network Configuration

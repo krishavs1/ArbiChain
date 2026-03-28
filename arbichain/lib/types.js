@@ -14,7 +14,8 @@ const TaskState = {
   DELIVERED: 2,
   APPROVED: 3,
   DISPUTED: 4,
-  RESOLVED: 5
+  RESOLVED: 5,
+  CANCELLED: 6
 };
 
 /**
@@ -26,7 +27,8 @@ const TaskStateLabels = {
   [TaskState.DELIVERED]: 'Delivered',
   [TaskState.APPROVED]: 'Approved',
   [TaskState.DISPUTED]: 'Disputed',
-  [TaskState.RESOLVED]: 'Resolved'
+  [TaskState.RESOLVED]: 'Resolved',
+  [TaskState.CANCELLED]: 'Cancelled'
 };
 
 /**
@@ -38,7 +40,8 @@ const TaskStateColors = {
   [TaskState.DELIVERED]: '#F59E0B',  // Amber
   [TaskState.APPROVED]: '#10B981',   // Green
   [TaskState.DISPUTED]: '#EF4444',   // Red
-  [TaskState.RESOLVED]: '#8B5CF6'    // Purple
+  [TaskState.RESOLVED]: '#8B5CF6',   // Purple
+  [TaskState.CANCELLED]: '#6B7280'   // Gray
 };
 
 // ============ Dispute States ============
@@ -59,6 +62,24 @@ const DisputeRulingLabels = {
   [DisputeRuling.NONE]: 'Pending',
   [DisputeRuling.REFUND_BUYER]: 'Refund to Buyer',
   [DisputeRuling.PAY_SELLER]: 'Payment to Seller'
+};
+
+const DisputeReason = {
+  NONE: 0,
+  QUALITY_ISSUE: 1,
+  BUYER_SILENCE: 2,
+  SELLER_ABUSE: 3,
+  SCOPE_CHANGE: 4,
+  OTHER: 5
+};
+
+const DisputeReasonLabels = {
+  [DisputeReason.NONE]: 'None',
+  [DisputeReason.QUALITY_ISSUE]: 'Quality issue',
+  [DisputeReason.BUYER_SILENCE]: 'Buyer silence',
+  [DisputeReason.SELLER_ABUSE]: 'Seller abuse',
+  [DisputeReason.SCOPE_CHANGE]: 'Scope change',
+  [DisputeReason.OTHER]: 'Other'
 };
 
 // ============ Agent Types ============
@@ -180,8 +201,9 @@ const Defaults = {
   MAX_TASK_AMOUNT_SUN: 1000000000000, // 1M TRX maximum
 
   // Timing
-  DISPUTE_WINDOW_HOURS: 72,
-  AUTO_APPROVE_HOURS: 168, // 7 days
+  DELIVERY_WINDOW_HOURS: 72,
+  REVIEW_WINDOW_HOURS: 72,
+  MIN_WINDOW_SECONDS: 60,
 
   // Polling
   POLL_INTERVAL_MS: 5000,
@@ -266,7 +288,11 @@ function canApprove(state) {
  * @returns {boolean}
  */
 function isFinalized(state) {
-  return state === TaskState.APPROVED || state === TaskState.RESOLVED;
+  return (
+    state === TaskState.APPROVED ||
+    state === TaskState.RESOLVED ||
+    state === TaskState.CANCELLED
+  );
 }
 
 /**
@@ -302,6 +328,8 @@ module.exports = {
   // Dispute
   DisputeRuling,
   DisputeRulingLabels,
+  DisputeReason,
+  DisputeReasonLabels,
 
   // Agents
   AgentRole,
