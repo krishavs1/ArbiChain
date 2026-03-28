@@ -64,9 +64,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-6 py-4">
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">W</span>
-          </div>
+          <img src="/whistle.png" alt="Whistle" width={36} height={36} className="rounded-lg" />
           <div className="flex flex-col">
             <span className="text-lg font-semibold tracking-tight">
               Whistle

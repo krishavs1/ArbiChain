@@ -78,9 +78,14 @@ export function AgentCard({ agent, title }: AgentCardProps) {
       </CardHeader>
       <CardContent className="relative space-y-4">
         <div className="flex items-center gap-2">
-          <code className="flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">
+          <a
+            href={`https://nile.tronscan.org/#/address/${agent.address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-primary hover:underline"
+          >
             {agent.address}
-          </code>
+          </a>
           <CopyButton value={agent.address} />
         </div>
 
