@@ -310,7 +310,7 @@ export async function happySubmitDeliverable() {
     deliverableProvider: delivUpload.provider,
     deliverableRetrievalUrl: delivUpload.retrievalUrl,
     contentPreview: generated.title,
-    contentBody: generated.body.slice(0, 500) + (generated.body.length > 500 ? '...' : ''),
+    contentBody: generated.body,
     wordCount: generated.wordCount,
     aiModel: generated.model,
     aiTokensUsed: generated.tokensUsed,
@@ -341,6 +341,10 @@ export async function happyApprove() {
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
     action: 'Funds released to seller. Reputation updated on-chain.',
+    reputationUpdate: [
+      { agent: 'Buyer', change: '+10', reason: 'Task completed successfully' },
+      { agent: 'Seller', change: '+20', reason: 'Deliverable approved by buyer' },
+    ],
     aiReview: {
       approved: review.approved,
       overallScore: review.overallScore,
@@ -466,7 +470,7 @@ export async function disputeOpenDispute() {
   const deliv = await fil.retrieveJson(disputeDelivCid);
   const review = await ai.buyerReview(spec, deliv.content || deliv);
 
-  const tx = await escrowBuyer.openDisputeByBuyer(currentDisputeTaskId, 1).send({ feeLimit: 50000000 });
+  const tx = await escrowBuyer.openDisputeByBuyer(currentDisputeTaskId, 1).send({ feeLimit: 300000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
 
   return {
@@ -474,6 +478,9 @@ export async function disputeOpenDispute() {
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
     disputeOpenedBy: 'Buyer (AI Agent)',
+    reputationUpdate: [
+      { agent: 'Seller', change: '-10', reason: 'Dispute opened against deliverable' },
+    ],
     aiReview: {
       approved: review.approved,
       overallScore: review.overallScore,
@@ -763,12 +770,12 @@ export async function castPanelVote(taskId: string, voterIndex: number, ruling: 
   const tw = tws[voterIndex];
   if (!pool) throw new Error('Pool not configured');
 
-  const tx = await pool.castVote(taskId, ruling).send({ feeLimit: 100000000 });
+  const tx = await pool.castVote(taskId, ruling).send({ feeLimit: 500000000 });
   await tronLib.waitForConfirmation(tw, tx);
 
   const panel = await pools[0].getPanel(taskId).call();
 
-  return {
+  const result: any = {
     voter: labels[voterIndex],
     voterAddress: tw.defaultAddress.base58,
     ruling,
@@ -778,6 +785,25 @@ export async function castPanelVote(taskId: string, voterIndex: number, ruling: 
     panelResolved: panel.resolved,
     panelOutcome: Number(panel.outcome),
   };
+
+  if (panel.resolved) {
+    const isRefund = Number(panel.outcome) === 1;
+    result.reputationUpdate = isRefund
+      ? [
+          { agent: 'Buyer (winner)', change: '+5', reason: 'Won dispute — refund granted' },
+          { agent: 'Seller (loser)', change: '-50', reason: 'Lost dispute — deliverable rejected' },
+        ]
+      : [
+          { agent: 'Seller (winner)', change: '+5', reason: 'Won dispute — payment released' },
+          { agent: 'Buyer (loser)', change: '-50', reason: 'Lost dispute — claim rejected' },
+        ];
+    result.tokenRewards = [
+      { agent: 'Correct voters', change: '+10 ARBI each', reason: 'Voted with majority' },
+      { agent: 'Minority voter', change: '-5 ARBI stake slashed', reason: 'Voted against majority' },
+    ];
+  }
+
+  return result;
 }
 
 export async function getTaskState(taskId: string) {

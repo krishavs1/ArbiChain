@@ -167,6 +167,27 @@ export function ResultViewer({ result, title, className }: ResultViewerProps) {
           </div>
         )}
 
+        {result.taskSpec && (() => {
+          const spec = result.taskSpec as Record<string, any>;
+          return (
+            <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <p className="text-sm font-semibold">{spec.title}</p>
+              <p className="text-xs text-muted-foreground">{spec.description}</p>
+              {spec.requirements && Array.isArray(spec.requirements) && (
+                <div className="space-y-1 pt-1">
+                  <p className="text-xs font-medium text-muted-foreground">Requirements:</p>
+                  {spec.requirements.map((req: string, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="text-primary">&#8226;</span>
+                      <span>{req}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {result.amount && (
           <div className="flex items-center justify-between rounded-lg border bg-primary/5 p-3">
             <span className="text-sm text-muted-foreground">Amount</span>
@@ -203,12 +224,64 @@ export function ResultViewer({ result, title, className }: ResultViewerProps) {
           </div>
         )}
 
+        {result.reputationUpdate && Array.isArray(result.reputationUpdate) && (
+          <div className="space-y-2 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
+            <p className="text-sm font-medium">Reputation Updates</p>
+            {(result.reputationUpdate as any[]).map((u: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{u.agent} — {u.reason}</span>
+                <Badge variant="outline" className={
+                  u.change.startsWith('+')
+                    ? "bg-success/10 text-success border-success/20"
+                    : "bg-destructive/10 text-destructive border-destructive/20"
+                }>
+                  {u.change}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {result.tokenRewards && Array.isArray(result.tokenRewards) && (
+          <div className="space-y-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <p className="text-sm font-medium">ARBI Token Rewards</p>
+            {(result.tokenRewards as any[]).map((t: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{t.agent} — {t.reason}</span>
+                <Badge variant="outline" className={
+                  t.change.startsWith('+')
+                    ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                    : "bg-destructive/10 text-destructive border-destructive/20"
+                }>
+                  {t.change}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+
         {result.reason && (
           <div className="rounded-lg border border-warning/20 bg-warning/5 p-3 text-sm text-warning-foreground">
             <p className="font-medium">Dispute Reason:</p>
             <p className="mt-1 text-muted-foreground">
               {result.reason as string}
             </p>
+          </div>
+        )}
+
+        {result.voter && (
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <span className="text-sm text-muted-foreground">Voter</span>
+            <span className="text-sm font-medium">{result.voter as string}</span>
+          </div>
+        )}
+
+        {result.panelResolved !== undefined && (
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <span className="text-sm text-muted-foreground">Panel Status</span>
+            <Badge variant={result.panelResolved ? "default" : "outline"}>
+              {result.panelResolved ? "Resolved" : "Awaiting more votes"}
+            </Badge>
           </div>
         )}
 
@@ -228,24 +301,27 @@ export function ResultViewer({ result, title, className }: ResultViewerProps) {
           </div>
         )}
 
-        {result.ruling && (
+        {(result.ruling !== undefined || result.rulingLabel) && (
           <div className="flex items-center justify-between rounded-lg border p-3">
             <span className="text-sm text-muted-foreground">Ruling</span>
             <Badge
               variant={
-                winner === "buyer" ? "destructive" : "default"
+                winner === "buyer" || String(result.rulingLabel || result.ruling).toLowerCase().includes("refund")
+                  ? "destructive" : "default"
               }
             >
-              {result.ruling as string}
+              {(result.rulingLabel || result.ruling) as string}
             </Badge>
           </div>
         )}
 
-        {result.contentBody && (
+        {(result.contentBody || result.contentPreview) && (
           <div className="space-y-2 rounded-lg border p-3">
-            <p className="text-sm font-medium">AI-Generated Content Preview</p>
-            <p className="text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {result.contentBody as string}
+            <p className="text-sm font-medium">
+              {result.aiModel ? "AI-Generated Content" : "Content Preview"}
+            </p>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap max-h-96 overflow-y-auto leading-relaxed">
+              {(result.contentBody || result.contentPreview) as string}
             </p>
           </div>
         )}

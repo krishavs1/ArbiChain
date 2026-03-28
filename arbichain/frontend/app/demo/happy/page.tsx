@@ -112,17 +112,37 @@ export default function HappyPathPage() {
                   />
 
                   <div className="mt-6 border-t pt-6">
-                    {isComplete ? (
-                      <div className="rounded-lg border border-success/20 bg-success/5 p-4 text-center">
-                        <p className="font-semibold text-success">
-                          Demo Complete!
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          The happy path flow has been successfully
-                          demonstrated.
-                        </p>
-                      </div>
-                    ) : (
+                    {isComplete ? (() => {
+                      const lastResult = results[results.length - 1]?.data;
+                      const txHash = lastResult?.txHash as string | undefined;
+                      const explorerUrl = lastResult?.explorerUrl as string | undefined;
+                      return (
+                        <div className="rounded-lg border border-success/20 bg-success/5 p-4 text-center space-y-2">
+                          <p className="font-semibold text-success">
+                            Task Complete!
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            AI seller delivered, AI buyer approved. Funds released
+                            to seller on-chain.
+                          </p>
+                          {txHash && (
+                            <p className="font-mono text-xs text-muted-foreground truncate">
+                              Payment tx: {txHash}
+                            </p>
+                          )}
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              Verify on TronScan &rarr;
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })() : (
                       <Button
                         className="w-full"
                         onClick={() => runStep(currentStep)}

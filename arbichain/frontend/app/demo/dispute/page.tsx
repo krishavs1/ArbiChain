@@ -130,17 +130,37 @@ export default function DisputePathPage() {
                   />
 
                   <div className="mt-6 border-t pt-6">
-                    {isComplete ? (
-                      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-center">
-                        <p className="font-semibold text-destructive">
-                          Dispute Resolved!
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          The arbitrator ruled in favor of the buyer. Funds have
-                          been refunded.
-                        </p>
-                      </div>
-                    ) : (
+                    {isComplete ? (() => {
+                      const lastResult = results[results.length - 1]?.data;
+                      const txHash = lastResult?.txHash as string | undefined;
+                      const explorerUrl = lastResult?.explorerUrl as string | undefined;
+                      return (
+                        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-center space-y-2">
+                          <p className="font-semibold text-destructive">
+                            Dispute Resolved!
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            The arbitrator panel ruled in favor of the buyer. Funds
+                            have been refunded on-chain.
+                          </p>
+                          {txHash && (
+                            <p className="font-mono text-xs text-muted-foreground truncate">
+                              Refund tx: {txHash}
+                            </p>
+                          )}
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              Verify on TronScan &rarr;
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })() : (
                       <Button
                         className="w-full"
                         onClick={() => runStep(currentStep)}

@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Shield,
   Users,
+  Workflow,
   ExternalLink,
 } from "lucide-react"
 import {
@@ -48,6 +49,11 @@ const navItems = [
     title: "Arbitrator Pool",
     href: "/pool",
     icon: Users,
+  },
+  {
+    title: "Architecture",
+    href: "/architecture",
+    icon: Workflow,
   },
 ]
 

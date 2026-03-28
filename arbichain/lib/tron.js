@@ -189,9 +189,24 @@ async function waitForConfirmation(tronWeb, txId, maxAttempts = 40, interval = 3
     try {
       const info = await tronWeb.trx.getTransactionInfo(txId);
       if (info && info.id) {
+        if (info.receipt && info.receipt.result === 'REVERT') {
+          let reason = 'unknown';
+          try {
+            const hex = info.contractResult?.[0] || '';
+            if (hex.length > 8) {
+              const bytes = Buffer.from(hex, 'hex');
+              const strOffset = 4 + 32;
+              const strLen = parseInt(hex.slice(strOffset * 2, (strOffset + 32) * 2), 16);
+              reason = bytes.slice(strOffset + 32, strOffset + 32 + strLen).toString('utf8');
+            }
+          } catch {}
+          throw new Error(`Transaction reverted: ${reason} (tx: ${txId})`);
+        }
         return info;
       }
-    } catch {}
+    } catch (e) {
+      if (e.message?.startsWith('Transaction reverted')) throw e;
+    }
     await new Promise(resolve => setTimeout(resolve, interval));
   }
   throw new Error(`Transaction ${txId} not confirmed after ${maxAttempts} attempts`);
