@@ -10,6 +10,10 @@ interface IReputationGate {
     function getReputation(address agent) external view returns (uint256);
 }
 
+interface IArbitratorPool {
+    function assignPanel(bytes32 taskId) external;
+}
+
 /**
  * @title ArbiChain Escrow
  * @notice Core escrow contract for AI agent commerce with dispute resolution
@@ -68,8 +72,11 @@ contract Escrow {
     // Mapping from taskId to Task struct
     mapping(bytes32 => Task) private tasks;
 
-    // Designated arbitrator address (can be a DAO or multi-sig in production)
+    // Designated arbitrator address (single EOA fallback)
     address public arbitrator;
+
+    // ArbitratorPool for multi-sig panel voting (address(0) = disabled)
+    IArbitratorPool public arbitratorPool;
 
     // Contract owner for admin functions
     address public owner;
@@ -129,6 +136,7 @@ contract Escrow {
 
     event TaskCancelled(bytes32 indexed taskId, address indexed buyer, string reason);
     event ArbitratorUpdated(address indexed oldArbitrator, address indexed newArbitrator);
+    event ArbitratorPoolUpdated(address indexed oldPool, address indexed newPool);
     event ReputationGateUpdated(address indexed oldReputationGate, address indexed newReputationGate);
     event MinimumReputationUpdated(uint256 oldValue, uint256 newValue);
     event DefaultWindowsUpdated(uint256 deliveryWindow, uint256 reviewWindow);
@@ -141,7 +149,10 @@ contract Escrow {
     }
 
     modifier onlyArbitrator() {
-        require(msg.sender == arbitrator, "Escrow: caller is not arbitrator");
+        require(
+            msg.sender == arbitrator || msg.sender == address(arbitratorPool),
+            "Escrow: caller is not arbitrator or pool"
+        );
         _;
     }
 
@@ -445,6 +456,16 @@ contract Escrow {
     }
 
     /**
+     * @notice Set or update the ArbitratorPool for multi-sig dispute resolution
+     * @param _pool ArbitratorPool address (address(0) to disable)
+     */
+    function setArbitratorPool(address _pool) external onlyOwner {
+        address oldPool = address(arbitratorPool);
+        arbitratorPool = IArbitratorPool(_pool);
+        emit ArbitratorPoolUpdated(oldPool, _pool);
+    }
+
+    /**
      * @notice Update ReputationGate contract address
      * @param _newReputationGate New ReputationGate address
      */
@@ -514,6 +535,9 @@ contract Escrow {
         task.disputeOpenedBy = opener;
         task.disputeReason = reason;
         reputationGate.recordDisputeOpened(task.buyer, task.seller);
+        if (address(arbitratorPool) != address(0)) {
+            arbitratorPool.assignPanel(taskId);
+        }
         emit DisputeOpened(taskId, opener, reason);
     }
 

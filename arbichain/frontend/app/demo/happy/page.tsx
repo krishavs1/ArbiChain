@@ -20,15 +20,15 @@ const steps: Step[] = [
   },
   {
     id: "submit-deliverable",
-    label: "Submit Deliverable",
+    label: "AI Seller Generates & Submits",
     description:
-      "Seller submits work product stored on Filecoin, updates task status on-chain",
+      "AI seller agent generates quality content via GPT-4o-mini, stores on Filecoin, submits on-chain",
   },
   {
     id: "approve",
-    label: "Approve & Release",
+    label: "AI Buyer Reviews & Approves",
     description:
-      "Buyer approves the deliverable, funds are released to seller, reputation updated",
+      "AI buyer agent evaluates deliverable against structured rubric, approves on-chain, funds released",
   },
 ]
 

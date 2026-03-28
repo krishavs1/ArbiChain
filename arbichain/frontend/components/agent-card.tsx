@@ -18,6 +18,7 @@ interface AgentData {
   disputesWon: number
   disputesLost: number
   isRegistered: boolean
+  arbiBalance?: number
 }
 
 interface AgentCardProps {
@@ -67,7 +68,12 @@ export function AgentCard({ agent, title }: AgentCardProps) {
         </div>
         <div className="text-right">
           <p className="text-lg font-semibold">{agent.balance}</p>
-          <p className="text-xs text-muted-foreground">Balance</p>
+          <p className="text-xs text-muted-foreground">TRX Balance</p>
+          {agent.arbiBalance != null && agent.arbiBalance > 0 && (
+            <>
+              <p className="text-sm font-semibold text-purple-500 mt-1">{agent.arbiBalance.toLocaleString()} ARBI</p>
+            </>
+          )}
         </div>
       </CardHeader>
       <CardContent className="relative space-y-4">

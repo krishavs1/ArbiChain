@@ -16,25 +16,37 @@ const steps: Step[] = [
     id: "create-task",
     label: "Create Task",
     description:
-      "Buyer creates a task with requirements stored on Filecoin, escrows funds on TRON",
+      "Buyer creates a task with strict requirements, escrows funds on TRON",
   },
   {
     id: "submit-garbage",
-    label: "Submit Bad Deliverable",
+    label: "AI Seller Submits (Low-Effort)",
     description:
-      "Seller submits work that does not meet requirements (for demo purposes)",
+      "AI seller agent intentionally produces inadequate content via GPT-4o-mini",
   },
   {
-    id: "seller-escalate-silence",
-    label: "Seller Escalates Buyer Silence",
+    id: "open-dispute",
+    label: "AI Buyer Opens Dispute",
     description:
-      "After review window expires, seller escalates to dispute for buyer silence",
+      "AI buyer agent reviews deliverable with structured rubric, rejects it, opens on-chain dispute",
   },
   {
-    id: "resolve",
-    label: "Arbitrator Resolves",
+    id: "analyze-evidence",
+    label: "AI Arbitrator Analyzes",
     description:
-      "Arbitrator analyzes evidence and rules in favor of buyer (refund)",
+      "AI arbitrator agent produces detailed analysis with ruling, confidence, and rationale — report stored on Filecoin",
+  },
+  {
+    id: "panel-vote-1",
+    label: "Panel Vote 1 (Deployer)",
+    description:
+      "First panel member votes REFUND_BUYER based on AI evidence analysis",
+  },
+  {
+    id: "panel-vote-2",
+    label: "Panel Vote 2 (Arbitrator)",
+    description:
+      "Second panel member votes REFUND_BUYER — 2/3 majority reached, dispute auto-resolves on-chain",
   },
 ]
 
@@ -96,7 +108,7 @@ export default function DisputePathPage() {
       <SidebarInset>
         <Header
           title="Dispute Path Demo"
-          description="Walk through a disputed task with seller escalation and arbitration"
+          description="Walk through a disputed task with multi-sig arbitrator panel voting"
         />
         <main className="flex-1 p-6">
           <div className="grid gap-6 lg:grid-cols-2">
@@ -159,15 +171,22 @@ export default function DisputePathPage() {
               <Card className="border-warning/20 bg-warning/5">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base text-warning">
-                    About This Demo
+                    AI-Powered Multi-Sig Arbitration
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    This demo simulates a production-style path where the
-                    buyer does not respond within the review window and the
-                    seller escalates. Wait at least 60 seconds after
-                    deliverable submission before running the escalation step.
+                    All agents are powered by <strong>GPT-4o-mini</strong>. The
+                    seller generates content, the buyer reviews against a
+                    structured rubric, and the arbitrator produces a detailed
+                    analysis with confidence scoring and logged rationale — all
+                    stored immutably on Filecoin.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    When a dispute is opened, the ArbitratorPool contract
+                    assigns a rotating panel of 3 arbitrators. A 2/3 majority
+                    auto-resolves on-chain, rewarding correct voters with ARBI
+                    tokens and slashing the minority.
                   </p>
                 </CardContent>
               </Card>

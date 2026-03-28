@@ -192,6 +192,28 @@ const ErrorCodes = {
   TX_FAILED: 'TX_FAILED'
 };
 
+// ============ ArbitratorPool ============
+
+const PanelVote = {
+  NOT_VOTED: 0,
+  REFUND_BUYER: 1,
+  PAY_SELLER: 2
+};
+
+const PanelVoteLabels = {
+  [PanelVote.NOT_VOTED]: 'Not Voted',
+  [PanelVote.REFUND_BUYER]: 'Refund Buyer',
+  [PanelVote.PAY_SELLER]: 'Pay Seller'
+};
+
+const ArbitratorPoolConstants = {
+  PANEL_SIZE: 3,
+  VOTE_THRESHOLD: 2,
+  MIN_STAKE_ARBI: 100,
+  REWARD_PER_CORRECT_VOTE: 10,
+  SLASH_PER_WRONG_VOTE: 5
+};
+
 // ============ Default Configuration ============
 
 const Defaults = {
@@ -214,7 +236,11 @@ const Defaults = {
   INITIAL_REPUTATION: 500,
   TASK_COMPLETE_BONUS: 10,
   DISPUTE_WIN_BONUS: 5,
-  DISPUTE_LOSS_PENALTY: 50
+  DISPUTE_LOSS_PENALTY: 50,
+
+  // ArbiToken
+  ARBI_INITIAL_SUPPLY: '1000000',
+  ARBI_DECIMALS: 18
 };
 
 // ============ Task Spec Schema ============
@@ -355,6 +381,11 @@ module.exports = {
   // Schemas
   TaskSpecSchema,
   DeliverableSchema,
+
+  // ArbitratorPool
+  PanelVote,
+  PanelVoteLabels,
+  ArbitratorPoolConstants,
 
   // Helpers
   canDispute,

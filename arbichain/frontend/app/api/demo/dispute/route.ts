@@ -4,6 +4,8 @@ import {
   disputeSubmitGarbage,
   disputeOpenDispute,
   disputeSellerEscalateSilence,
+  disputeAnalyzeEvidence,
+  disputePanelVote,
   disputeResolve
 } from '@/lib/demo-engine';
 
@@ -27,6 +29,15 @@ export async function POST(req: NextRequest) {
         break;
       case 'seller-escalate-silence':
         result = await disputeSellerEscalateSilence();
+        break;
+      case 'analyze-evidence':
+        result = await disputeAnalyzeEvidence();
+        break;
+      case 'panel-vote-1':
+        result = await disputePanelVote(0);
+        break;
+      case 'panel-vote-2':
+        result = await disputePanelVote(1);
         break;
       case 'resolve':
         result = await disputeResolve();

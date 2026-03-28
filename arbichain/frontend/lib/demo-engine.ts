@@ -28,6 +28,11 @@ function getTypesLib() {
   return _require(path.join(ROOT, 'lib', 'types.js'));
 }
 
+function getAiLib() {
+  loadEnv();
+  return _require(path.join(ROOT, 'lib', 'ai.js'));
+}
+
 const EXPLORER = 'https://nile.tronscan.org';
 
 const ESCROW_ABI = [
@@ -48,6 +53,38 @@ const ESCROW_ABI = [
   { inputs:[{name:'taskId',type:'bytes32'}], name:'getTaskDeadlines', outputs:[{name:'deliverBy',type:'uint256'},{name:'reviewBy',type:'uint256'},{name:'reviewWindow',type:'uint256'}], stateMutability:'view', type:'function' },
   { inputs:[{name:'taskId',type:'bytes32'}], name:'getTaskDisputeMeta', outputs:[{name:'openedBy',type:'address'},{name:'reason',type:'uint8'}], stateMutability:'view', type:'function' },
   { inputs:[], name:'arbitrator', outputs:[{name:'',type:'address'}], stateMutability:'view', type:'function' },
+];
+
+const ARBI_TOKEN_ABI = [
+  { inputs:[{name:'account',type:'address'}], name:'balanceOf', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[{name:'to',type:'address'},{name:'value',type:'uint256'}], name:'transfer', outputs:[{name:'',type:'bool'}], stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'spender',type:'address'},{name:'value',type:'uint256'}], name:'approve', outputs:[{name:'',type:'bool'}], stateMutability:'nonpayable', type:'function' },
+  { inputs:[], name:'totalSupply', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'symbol', outputs:[{name:'',type:'string'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'decimals', outputs:[{name:'',type:'uint8'}], stateMutability:'view', type:'function' },
+];
+
+const ARB_POOL_ABI = [
+  { inputs:[{name:'amount',type:'uint256'}], name:'joinPool', stateMutability:'nonpayable', type:'function' },
+  { inputs:[], name:'leavePool', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'arb',type:'address'},{name:'stakeAmount',type:'uint256'}], name:'addArbitrator', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'},{name:'ruling',type:'uint8'}], name:'castVote', stateMutability:'nonpayable', type:'function' },
+  { inputs:[{name:'taskId',type:'bytes32'}], name:'getPanel', outputs:[
+    {name:'members',type:'address[3]'},{name:'votes',type:'uint8[3]'},
+    {name:'voteCount',type:'uint256'},{name:'resolved',type:'bool'},{name:'outcome',type:'uint8'}
+  ], stateMutability:'view', type:'function' },
+  { inputs:[{name:'arb',type:'address'}], name:'getArbitrator', outputs:[
+    {name:'isActive',type:'bool'},{name:'stakedAmount',type:'uint256'},
+    {name:'totalVotes',type:'uint256'},{name:'correctVotes',type:'uint256'},
+    {name:'earnedRewards',type:'uint256'}
+  ], stateMutability:'view', type:'function' },
+  { inputs:[], name:'poolSize', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'totalDisputes', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'PANEL_SIZE', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'VOTE_THRESHOLD', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'REWARD_PER_CORRECT_VOTE', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'SLASH_PER_WRONG_VOTE', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
+  { inputs:[], name:'minStake', outputs:[{name:'',type:'uint256'}], stateMutability:'view', type:'function' },
 ];
 
 const REPGATE_ABI = [
@@ -85,7 +122,31 @@ async function getInstances() {
   const escrowArb = await arbTw.contract(ESCROW_ABI, process.env.ESCROW_ADDRESS);
   const repGate = await ownerTw.contract(REPGATE_ABI, process.env.REPUTATION_GATE_ADDRESS);
 
-  _instances = { buyerTw, sellerTw, arbTw, ownerTw, escrowBuyer, escrowSeller, escrowArb, repGate, tronLib };
+  // ArbiToken + ArbitratorPool
+  const arbiToken = process.env.ARBI_TOKEN_ADDRESS
+    ? await ownerTw.contract(ARBI_TOKEN_ABI, process.env.ARBI_TOKEN_ADDRESS)
+    : null;
+  const arbPool = process.env.ARBITRATOR_POOL_ADDRESS
+    ? await ownerTw.contract(ARB_POOL_ABI, process.env.ARBITRATOR_POOL_ADDRESS)
+    : null;
+
+  // Pool contract instances for each arbitrator to cast votes
+  const arbPoolArb = process.env.ARBITRATOR_POOL_ADDRESS
+    ? await arbTw.contract(ARB_POOL_ABI, process.env.ARBITRATOR_POOL_ADDRESS)
+    : null;
+  const arbPoolOwner = process.env.ARBITRATOR_POOL_ADDRESS
+    ? await ownerTw.contract(ARB_POOL_ABI, process.env.ARBITRATOR_POOL_ADDRESS)
+    : null;
+  const arbPoolBuyer = process.env.ARBITRATOR_POOL_ADDRESS
+    ? await buyerTw.contract(ARB_POOL_ABI, process.env.ARBITRATOR_POOL_ADDRESS)
+    : null;
+
+  _instances = {
+    buyerTw, sellerTw, arbTw, ownerTw,
+    escrowBuyer, escrowSeller, escrowArb, repGate,
+    arbiToken, arbPool, arbPoolArb, arbPoolOwner, arbPoolBuyer,
+    tronLib,
+  };
   return _instances;
 }
 
@@ -130,13 +191,31 @@ export async function getAgents() {
     };
   }
 
+  // ARBI token balances (if available)
+  const { arbiToken } = await getInstances();
+  let arbiBalances = { buyer: 0, seller: 0, arbitrator: 0 };
+  if (arbiToken) {
+    const [bBal, sBal, aBal] = await Promise.all([
+      arbiToken.balanceOf(buyerAddr).call(),
+      arbiToken.balanceOf(sellerAddr).call(),
+      arbiToken.balanceOf(arbAddr).call(),
+    ]);
+    arbiBalances = {
+      buyer: Number(bBal) / 1e18,
+      seller: Number(sBal) / 1e18,
+      arbitrator: Number(aBal) / 1e18,
+    };
+  }
+
   return {
-    buyer: { address: buyerAddr, balance: buyerBal, role: 'Buyer', ...formatStats(buyerStats) },
-    seller: { address: sellerAddr, balance: sellerBal, role: 'Seller', ...formatStats(sellerStats) },
-    arbitrator: { address: arbAddr, balance: arbBal, role: 'Arbitrator', ...formatStats(arbStats) },
+    buyer: { address: buyerAddr, balance: buyerBal, role: 'Buyer', arbiBalance: arbiBalances.buyer, ...formatStats(buyerStats) },
+    seller: { address: sellerAddr, balance: sellerBal, role: 'Seller', arbiBalance: arbiBalances.seller, ...formatStats(sellerStats) },
+    arbitrator: { address: arbAddr, balance: arbBal, role: 'Arbitrator', arbiBalance: arbiBalances.arbitrator, ...formatStats(arbStats) },
     contracts: {
       escrow: process.env.ESCROW_ADDRESS,
       reputationGate: process.env.REPUTATION_GATE_ADDRESS,
+      arbiToken: process.env.ARBI_TOKEN_ADDRESS,
+      arbitratorPool: process.env.ARBITRATOR_POOL_ADDRESS,
     },
     network: 'TRON Nile',
     explorer: EXPLORER,
@@ -194,26 +273,26 @@ export async function happySubmitDeliverable() {
 
   const { sellerTw, escrowSeller, tronLib } = await getInstances();
   const fil = getFilecoinLib();
+  const ai = getAiLib();
   const sellerAddr = sellerTw.defaultAddress.base58;
 
   const fetchedSpec = await fil.retrieveJson(happySpecCid);
+
+  // AI Seller Agent generates real content from the task spec
+  const generated = await ai.sellerGenerate(fetchedSpec, { lowEffort: false });
 
   const deliverable = {
     taskId: currentHappyTaskId,
     content: {
       type: 'article',
-      title: 'Understanding Blockchain Consensus Mechanisms',
-      body: `Blockchain consensus mechanisms are the protocols that ensure all nodes in a decentralized network agree on the current state of the ledger. The two most prominent approaches are Proof of Work (PoW) and Proof of Stake (PoS).
-
-Proof of Work, pioneered by Bitcoin in 2009, requires miners to solve computationally intensive puzzles. The first miner to find a valid hash gets to add the next block and receive a reward. While extremely secure, PoW consumes significant energy — Bitcoin alone uses more electricity than some countries.
-
-Proof of Stake offers an energy-efficient alternative. Instead of computational power, validators lock up cryptocurrency as collateral. Ethereum's transition to PoS in 2022 ("The Merge") reduced its energy consumption by 99.95%. Validators are chosen based on their staked amount and other factors.
-
-Real-world examples abound: supply chain tracking (Walmart uses blockchain to trace food origins), decentralized finance (Aave enables peer-to-peer lending without banks), and digital identity (Estonia's e-Residency program). These applications rely on consensus mechanisms to maintain trust without centralized authorities.
-
-The evolution from PoW to PoS reflects the broader maturation of blockchain technology — balancing security, decentralization, and sustainability for practical adoption.`,
-      wordCount: 178,
-      requirements_met: ['200+ words', 'Covers PoW and PoS', 'Includes Walmart, Aave, Estonia examples', 'Original content'],
+      title: generated.title,
+      body: generated.body,
+      wordCount: generated.wordCount,
+    },
+    aiMetadata: {
+      model: generated.model,
+      tokensUsed: generated.tokensUsed,
+      agent: 'seller',
     },
     generatedAt: new Date().toISOString(),
     agentId: sellerAddr,
@@ -230,18 +309,30 @@ The evolution from PoW to PoS reflects the broader maturation of blockchain tech
     deliverableCid: delivUpload.cid,
     deliverableProvider: delivUpload.provider,
     deliverableRetrievalUrl: delivUpload.retrievalUrl,
-    contentPreview: deliverable.content.title,
-    wordCount: deliverable.content.wordCount,
+    contentPreview: generated.title,
+    contentBody: generated.body.slice(0, 500) + (generated.body.length > 500 ? '...' : ''),
+    wordCount: generated.wordCount,
+    aiModel: generated.model,
+    aiTokensUsed: generated.tokensUsed,
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
   };
 }
 
 export async function happyApprove() {
-  if (!currentHappyTaskId) throw new Error('Run create-task first');
+  if (!currentHappyTaskId || !happySpecCid || !happyDelivCid) throw new Error('Run create-task and submit-deliverable first');
 
   const { buyerTw, escrowBuyer, tronLib } = await getInstances();
+  const fil = getFilecoinLib();
+  const ai = getAiLib();
 
+  // AI Buyer Agent reviews the deliverable against the task spec
+  const spec = await fil.retrieveJson(happySpecCid);
+  const deliv = await fil.retrieveJson(happyDelivCid);
+
+  const review = await ai.buyerReview(spec, deliv.content || deliv);
+
+  // Approve on-chain (in the happy path, we always approve regardless of AI verdict)
   const tx = await escrowBuyer.approveDeliverable(currentHappyTaskId).send({ feeLimit: 50000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
 
@@ -249,7 +340,15 @@ export async function happyApprove() {
     taskId: currentHappyTaskId,
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
-    action: 'Funds released to seller. Reputation was updated by Escrow on-chain.',
+    action: 'Funds released to seller. Reputation updated on-chain.',
+    aiReview: {
+      approved: review.approved,
+      overallScore: review.overallScore,
+      rubric: review.rubric,
+      reasoning: review.reasoning,
+      model: review.model,
+      tokensUsed: review.tokensUsed,
+    },
   };
 }
 
@@ -289,7 +388,7 @@ export async function disputeCreateTask() {
 
   const amountSun = buyerTw.toSun(10);
   const deliverBy = Math.floor(Date.now() / 1000) + (12 * 60 * 60);
-  const reviewWindow = 60;
+  const reviewWindow = 30 * 60; // 30 min — enough for AI agent processing + Filecoin uploads
   const tx = await escrowBuyer.createTask(taskId, sellerAddr, specUpload.cid, deliverBy, reviewWindow).send({ callValue: amountSun, feeLimit: 100000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
 
@@ -308,18 +407,30 @@ export async function disputeCreateTask() {
 }
 
 export async function disputeSubmitGarbage() {
-  if (!currentDisputeTaskId) throw new Error('Run create-task first');
+  if (!currentDisputeTaskId || !disputeSpecCid) throw new Error('Run create-task first');
 
   const { sellerTw, escrowSeller, tronLib } = await getInstances();
   const fil = getFilecoinLib();
+  const ai = getAiLib();
   const sellerAddr = sellerTw.defaultAddress.base58;
+
+  const spec = await fil.retrieveJson(disputeSpecCid);
+
+  // AI Seller Agent in low-effort mode — intentionally produces garbage
+  const generated = await ai.sellerGenerate(spec, { lowEffort: true });
 
   const garbage = {
     taskId: currentDisputeTaskId,
     content: {
       type: 'article',
-      title: 'ZK stuff',
-      body: 'Zero knowledge proofs are cool. They let you prove things without showing the data. The end.',
+      title: generated.title,
+      body: generated.body,
+      wordCount: generated.wordCount,
+    },
+    aiMetadata: {
+      model: generated.model,
+      tokensUsed: generated.tokensUsed,
+      agent: 'seller (low-effort)',
     },
     generatedAt: new Date().toISOString(),
     agentId: sellerAddr,
@@ -335,17 +446,25 @@ export async function disputeSubmitGarbage() {
     taskId: currentDisputeTaskId,
     deliverableCid: delivUpload.cid,
     deliverableRetrievalUrl: delivUpload.retrievalUrl,
-    contentPreview: garbage.content.body,
-    wordCount: garbage.content.body.split(/\s+/).length,
+    contentPreview: generated.body,
+    wordCount: generated.wordCount,
+    aiModel: generated.model,
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
   };
 }
 
 export async function disputeOpenDispute() {
-  if (!currentDisputeTaskId) throw new Error('Run create-task first');
+  if (!currentDisputeTaskId || !disputeSpecCid || !disputeDelivCid) throw new Error('Run previous steps first');
 
   const { buyerTw, escrowBuyer, tronLib } = await getInstances();
+  const fil = getFilecoinLib();
+  const ai = getAiLib();
+
+  // AI Buyer Agent reviews and rejects, triggering dispute
+  const spec = await fil.retrieveJson(disputeSpecCid);
+  const deliv = await fil.retrieveJson(disputeDelivCid);
+  const review = await ai.buyerReview(spec, deliv.content || deliv);
 
   const tx = await escrowBuyer.openDisputeByBuyer(currentDisputeTaskId, 1).send({ feeLimit: 50000000 });
   await tronLib.waitForConfirmation(buyerTw, tx);
@@ -354,8 +473,14 @@ export async function disputeOpenDispute() {
     taskId: currentDisputeTaskId,
     txHash: tx,
     explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
-    reason: 'Deliverable does not meet requirements — 16 words vs 500 required',
-    disputeOpenedBy: 'Buyer',
+    disputeOpenedBy: 'Buyer (AI Agent)',
+    aiReview: {
+      approved: review.approved,
+      overallScore: review.overallScore,
+      rubric: review.rubric,
+      reasoning: review.reasoning,
+      model: review.model,
+    },
   };
 }
 
@@ -373,55 +498,135 @@ export async function disputeSellerEscalateSilence() {
   };
 }
 
-export async function disputeResolve() {
+export async function disputeAnalyzeEvidence() {
   if (!currentDisputeTaskId || !disputeSpecCid || !disputeDelivCid) throw new Error('Run previous steps first');
 
-  const { arbTw, escrowArb, tronLib } = await getInstances();
+  const { arbTw } = await getInstances();
   const fil = getFilecoinLib();
+  const ai = getAiLib();
   const arbAddr = arbTw.defaultAddress.base58;
 
-  const arbDeliv = await fil.retrieveJson(disputeDelivCid);
+  const spec = await fil.retrieveJson(disputeSpecCid);
+  const deliv = await fil.retrieveJson(disputeDelivCid);
 
-  const wordCount = arbDeliv.content?.body?.split(/\s+/).length || 0;
-  const hasCitations = /\[\d+\]|et al\.|doi:/i.test(arbDeliv.content?.body || '');
-  const coversZkSnarks = /zk-snark/i.test(arbDeliv.content?.body || '');
-  const coversZkStarks = /zk-stark/i.test(arbDeliv.content?.body || '');
-
-  const analysis = {
-    wordCount,
-    requiredWords: 500,
-    hasCitations,
-    coversZkSnarks,
-    coversZkStarks,
-    requirementsMet: 0,
-    requirementsTotal: 4,
-    ruling: 'REFUND_BUYER',
-  };
+  // AI Arbitrator Agent performs deep analysis
+  const aiAnalysis = await ai.arbitratorAnalyze(
+    spec,
+    deliv.content || deliv,
+    { disputeReason: 'Quality issue', disputeOpenedBy: 'Buyer' },
+  );
 
   const report = {
     type: 'arbitration_report',
     taskId: currentDisputeTaskId,
-    ruling: 'REFUND_BUYER',
-    analysis,
+    ruling: aiAnalysis.ruling,
+    confidence: aiAnalysis.confidence,
+    requirementAnalysis: aiAnalysis.requirementAnalysis,
+    requirementsMet: aiAnalysis.requirementsMet,
+    requirementsTotal: aiAnalysis.requirementsTotal,
+    rationale: aiAnalysis.rationale,
+    mitigatingFactors: aiAnalysis.mitigatingFactors,
     evidence: { taskSpecCID: disputeSpecCid, deliverableCID: disputeDelivCid },
+    aiMetadata: { model: aiAnalysis.model, tokensUsed: aiAnalysis.tokensUsed },
     arbitrator: arbAddr,
     resolvedAt: new Date().toISOString(),
   };
 
   const reportUpload = await fil.uploadEvidence(report);
 
-  const tx = await escrowArb.resolveDispute(currentDisputeTaskId, 0).send({ feeLimit: 100000000 });
-  await tronLib.waitForConfirmation(arbTw, tx);
+  return {
+    taskId: currentDisputeTaskId,
+    aiAnalysis: {
+      ruling: aiAnalysis.ruling,
+      confidence: aiAnalysis.confidence,
+      requirementAnalysis: aiAnalysis.requirementAnalysis,
+      requirementsMet: aiAnalysis.requirementsMet,
+      requirementsTotal: aiAnalysis.requirementsTotal,
+      rationale: aiAnalysis.rationale,
+      mitigatingFactors: aiAnalysis.mitigatingFactors,
+      model: aiAnalysis.model,
+    },
+    reportCid: reportUpload.cid,
+    reportRetrievalUrl: reportUpload.retrievalUrl,
+  };
+}
+
+export async function disputePanelVote(voterIndex: number) {
+  if (!currentDisputeTaskId) throw new Error('Run previous steps first');
+  return castPanelVote(currentDisputeTaskId, voterIndex, 1); // 1 = refund buyer
+}
+
+export async function disputeResolve() {
+  if (!currentDisputeTaskId || !disputeSpecCid || !disputeDelivCid) throw new Error('Run previous steps first');
+
+  const { arbPool, arbTw, escrowArb, tronLib } = await getInstances();
+  const fil = getFilecoinLib();
+  const ai = getAiLib();
+  const arbAddr = arbTw.defaultAddress.base58;
+
+  const spec = await fil.retrieveJson(disputeSpecCid);
+  const deliv = await fil.retrieveJson(disputeDelivCid);
+
+  const aiAnalysis = await ai.arbitratorAnalyze(
+    spec,
+    deliv.content || deliv,
+    { disputeReason: 'Quality issue', disputeOpenedBy: 'Buyer' },
+  );
+
+  const report = {
+    type: 'arbitration_report',
+    taskId: currentDisputeTaskId,
+    ruling: aiAnalysis.ruling,
+    confidence: aiAnalysis.confidence,
+    rationale: aiAnalysis.rationale,
+    requirementAnalysis: aiAnalysis.requirementAnalysis,
+    evidence: { taskSpecCID: disputeSpecCid, deliverableCID: disputeDelivCid },
+    aiMetadata: { model: aiAnalysis.model, tokensUsed: aiAnalysis.tokensUsed },
+    arbitrator: arbAddr,
+    resolvedAt: new Date().toISOString(),
+  };
+
+  const reportUpload = await fil.uploadEvidence(report);
+
+  if (!arbPool) {
+    const escrowRuling = aiAnalysis.ruling === 'REFUND_BUYER' ? 0 : 1;
+    const tx = await escrowArb.resolveDispute(currentDisputeTaskId, escrowRuling).send({ feeLimit: 100000000 });
+    await tronLib.waitForConfirmation(arbTw, tx);
+
+    return {
+      taskId: currentDisputeTaskId,
+      aiAnalysis: {
+        ruling: aiAnalysis.ruling,
+        confidence: aiAnalysis.confidence,
+        rationale: aiAnalysis.rationale,
+        requirementsMet: aiAnalysis.requirementsMet,
+        requirementsTotal: aiAnalysis.requirementsTotal,
+        model: aiAnalysis.model,
+      },
+      reportCid: reportUpload.cid,
+      reportRetrievalUrl: reportUpload.retrievalUrl,
+      txHash: tx,
+      explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
+      winner: aiAnalysis.ruling === 'REFUND_BUYER' ? 'Buyer' : 'Seller',
+      mode: 'single-arbitrator',
+    };
+  }
 
   return {
     taskId: currentDisputeTaskId,
-    analysis,
+    aiAnalysis: {
+      ruling: aiAnalysis.ruling,
+      confidence: aiAnalysis.confidence,
+      rationale: aiAnalysis.rationale,
+      requirementsMet: aiAnalysis.requirementsMet,
+      requirementsTotal: aiAnalysis.requirementsTotal,
+      model: aiAnalysis.model,
+    },
     reportCid: reportUpload.cid,
     reportRetrievalUrl: reportUpload.retrievalUrl,
-    txHash: tx,
-    explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
-    ruling: 'REFUND_BUYER',
-    winner: 'Buyer',
+    winner: aiAnalysis.ruling === 'REFUND_BUYER' ? 'Buyer' : 'Seller',
+    mode: 'panel-voting',
+    message: 'AI analysis complete. Panel votes will finalize the dispute on-chain.',
   };
 }
 
@@ -438,6 +643,140 @@ export async function getReputationTerms() {
     suggestedDeposit: buyerTw.fromSun(terms.suggestedDeposit.toString()),
     depositPercent: Math.round(Number(buyerTw.fromSun(terms.suggestedDeposit.toString())) / 100 * 100),
     requiresArbitration: terms.requiresArbitration,
+  };
+}
+
+// ============ ArbitratorPool + Token Functions ============
+
+export async function getPoolStatus() {
+  const { arbPool, arbiToken, ownerTw, arbTw, buyerTw } = await getInstances();
+  if (!arbPool || !arbiToken) return { enabled: false };
+
+  const ownerAddr = ownerTw.defaultAddress.base58;
+  const arbAddr = arbTw.defaultAddress.base58;
+  const buyerAddr = buyerTw.defaultAddress.base58;
+
+  const [poolSize, totalDisputes] = await Promise.all([
+    arbPool.poolSize().call(),
+    arbPool.totalDisputes().call(),
+  ]);
+
+  const panelAddrs = [ownerAddr, arbAddr, buyerAddr];
+  const arbInfos = await Promise.all(
+    panelAddrs.map(async (addr: string) => {
+      const info = await arbPool.getArbitrator(addr).call();
+      const tokenBal = await arbiToken.balanceOf(addr).call();
+      return {
+        address: addr,
+        isActive: info.isActive,
+        stakedAmount: Number(info.stakedAmount) / 1e18,
+        totalVotes: Number(info.totalVotes),
+        correctVotes: Number(info.correctVotes),
+        earnedRewards: Number(info.earnedRewards) / 1e18,
+        tokenBalance: Number(tokenBal) / 1e18,
+      };
+    })
+  );
+
+  const totalSupply = await arbiToken.totalSupply().call();
+
+  return {
+    enabled: true,
+    poolSize: Number(poolSize),
+    totalDisputes: Number(totalDisputes),
+    totalTokenSupply: Number(totalSupply) / 1e18,
+    arbitrators: arbInfos,
+    panelSize: 3,
+    voteThreshold: 2,
+  };
+}
+
+export async function setupPool() {
+  const { arbPool, arbiToken, ownerTw, arbTw, buyerTw, tronLib } = await getInstances();
+  if (!arbPool || !arbiToken) throw new Error('Pool contracts not configured');
+
+  const ownerAddr = ownerTw.defaultAddress.base58;
+  const arbAddr = arbTw.defaultAddress.base58;
+  const buyerAddr = buyerTw.defaultAddress.base58;
+  const stakeAmount = '100000000000000000000'; // 100 ARBI
+
+  const results: any[] = [];
+
+  // Transfer ARBI tokens to arb and buyer so they can be registered
+  const tx1 = await arbiToken.transfer(arbAddr, stakeAmount).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(ownerTw, tx1);
+  results.push({ action: `Transferred 100 ARBI to arbitrator`, txHash: tx1 });
+
+  const tx2 = await arbiToken.transfer(buyerAddr, stakeAmount).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(ownerTw, tx2);
+  results.push({ action: `Transferred 100 ARBI to buyer (panel member)`, txHash: tx2 });
+
+  // Owner registers all 3 using addArbitrator (bypasses staking for demo speed)
+  const tx3 = await arbPool.addArbitrator(ownerAddr, stakeAmount).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(ownerTw, tx3);
+  results.push({ action: `Registered deployer in pool`, txHash: tx3 });
+
+  const tx4 = await arbPool.addArbitrator(arbAddr, stakeAmount).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(ownerTw, tx4);
+  results.push({ action: `Registered arbitrator in pool`, txHash: tx4 });
+
+  const tx5 = await arbPool.addArbitrator(buyerAddr, stakeAmount).send({ feeLimit: 50000000 });
+  await tronLib.waitForConfirmation(ownerTw, tx5);
+  results.push({ action: `Registered buyer as panel member`, txHash: tx5 });
+
+  return {
+    poolSize: 3,
+    arbitrators: [ownerAddr, arbAddr, buyerAddr],
+    results,
+  };
+}
+
+export async function getDisputePanel(taskId: string) {
+  const { arbPool, buyerTw } = await getInstances();
+  if (!arbPool) throw new Error('Pool not configured');
+
+  const panel = await arbPool.getPanel(taskId).call();
+  const voteLabels = ['Not Voted', 'Refund Buyer', 'Pay Seller'];
+
+  return {
+    members: panel.members.map((m: string) => buyerTw.address.fromHex(m)),
+    votes: panel.votes.map((v: any) => ({
+      value: Number(v),
+      label: voteLabels[Number(v)] || 'Unknown',
+    })),
+    voteCount: Number(panel.voteCount),
+    resolved: panel.resolved,
+    outcome: Number(panel.outcome),
+    outcomeLabel: panel.resolved ? voteLabels[Number(panel.outcome)] : 'Pending',
+  };
+}
+
+export async function castPanelVote(taskId: string, voterIndex: number, ruling: number) {
+  const { arbPoolOwner, arbPoolArb, arbPoolBuyer, ownerTw, arbTw, buyerTw, tronLib } = await getInstances();
+
+  const pools = [arbPoolOwner, arbPoolArb, arbPoolBuyer];
+  const tws = [ownerTw, arbTw, buyerTw];
+  const labels = ['Deployer', 'Arbitrator', 'Panel Member 3'];
+
+  if (voterIndex < 0 || voterIndex > 2) throw new Error('Invalid voter index');
+  const pool = pools[voterIndex];
+  const tw = tws[voterIndex];
+  if (!pool) throw new Error('Pool not configured');
+
+  const tx = await pool.castVote(taskId, ruling).send({ feeLimit: 100000000 });
+  await tronLib.waitForConfirmation(tw, tx);
+
+  const panel = await pools[0].getPanel(taskId).call();
+
+  return {
+    voter: labels[voterIndex],
+    voterAddress: tw.defaultAddress.base58,
+    ruling,
+    rulingLabel: ruling === 1 ? 'Refund Buyer' : 'Pay Seller',
+    txHash: tx,
+    explorerUrl: `${EXPLORER}/#/transaction/${tx}`,
+    panelResolved: panel.resolved,
+    panelOutcome: Number(panel.outcome),
   };
 }
 

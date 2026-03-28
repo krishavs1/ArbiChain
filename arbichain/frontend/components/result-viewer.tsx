@@ -241,6 +241,116 @@ export function ResultViewer({ result, title, className }: ResultViewerProps) {
           </div>
         )}
 
+        {result.contentBody && (
+          <div className="space-y-2 rounded-lg border p-3">
+            <p className="text-sm font-medium">AI-Generated Content Preview</p>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {result.contentBody as string}
+            </p>
+          </div>
+        )}
+
+        {result.aiModel && (
+          <div className="flex items-center justify-between rounded-lg border bg-purple-500/5 p-3">
+            <span className="text-sm text-muted-foreground">AI Model</span>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-500 border-purple-500/20">
+                {result.aiModel as string}
+              </Badge>
+              {result.aiTokensUsed && (
+                <span className="text-xs text-muted-foreground">{String(result.aiTokensUsed)} tokens</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {result.aiReview && (() => {
+          const review = result.aiReview as Record<string, any>;
+          return (
+            <div className="space-y-3 rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">AI Buyer Review</p>
+                <div className="flex items-center gap-2">
+                  <Badge variant={review.approved ? "default" : "destructive"}>
+                    {review.approved ? "Approved" : "Rejected"}
+                  </Badge>
+                  <span className="text-sm font-semibold">{review.overallScore}/100</span>
+                </div>
+              </div>
+              {review.reasoning && (
+                <p className="text-xs text-muted-foreground italic">&ldquo;{review.reasoning}&rdquo;</p>
+              )}
+              {review.rubric && Array.isArray(review.rubric) && (
+                <div className="space-y-1">
+                  {review.rubric.map((item: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2 rounded bg-muted/50 px-2 py-1.5 text-xs">
+                      <span className={cn("mt-0.5 font-bold", item.met ? "text-success" : "text-destructive")}>
+                        {item.met ? "✓" : "✗"}
+                      </span>
+                      <div className="flex-1">
+                        <span className="font-medium">{item.requirement}</span>
+                        {item.comment && <span className="text-muted-foreground"> — {item.comment}</span>}
+                      </div>
+                      <span className="font-mono text-muted-foreground">{item.score}/100</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {review.model && (
+                <p className="text-xs text-muted-foreground">Model: {review.model}</p>
+              )}
+            </div>
+          );
+        })()}
+
+        {result.aiAnalysis && (() => {
+          const a = result.aiAnalysis as Record<string, any>;
+          return (
+            <div className="space-y-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">AI Arbitrator Analysis</p>
+                <div className="flex items-center gap-2">
+                  <Badge variant={a.ruling === 'REFUND_BUYER' ? "destructive" : "default"}>
+                    {a.ruling}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{a.confidence}% confidence</span>
+                </div>
+              </div>
+              {a.rationale && (
+                <p className="text-xs text-muted-foreground italic border-l-2 border-purple-500/30 pl-2">
+                  &ldquo;{a.rationale}&rdquo;
+                </p>
+              )}
+              {a.requirementAnalysis && Array.isArray(a.requirementAnalysis) && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium">
+                    Requirements: {a.requirementsMet}/{a.requirementsTotal} met
+                  </p>
+                  {a.requirementAnalysis.map((item: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2 rounded bg-background/50 px-2 py-1.5 text-xs">
+                      <span className={cn("mt-0.5 font-bold", item.met ? "text-success" : "text-destructive")}>
+                        {item.met ? "✓" : "✗"}
+                      </span>
+                      <div className="flex-1">
+                        <span className="font-medium">{item.requirement}</span>
+                        {item.evidence && <span className="text-muted-foreground"> — {item.evidence}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {a.mitigatingFactors && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium">Mitigating factors:</span> {a.mitigatingFactors}
+                </p>
+              )}
+              {a.model && (
+                <p className="text-xs text-muted-foreground">Model: {a.model}</p>
+              )}
+            </div>
+          );
+        })()}
+
         {result.analysis && (
           <div className="space-y-2 rounded-lg border p-3">
             <p className="text-sm font-medium">Analysis</p>

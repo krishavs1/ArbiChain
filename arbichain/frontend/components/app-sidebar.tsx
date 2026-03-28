@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Shield,
+  Users,
   ExternalLink,
 } from "lucide-react"
 import {
@@ -42,6 +43,11 @@ const navItems = [
     title: "Reputation Gate",
     href: "/reputation",
     icon: Shield,
+  },
+  {
+    title: "Arbitrator Pool",
+    href: "/pool",
+    icon: Users,
   },
 ]
 
