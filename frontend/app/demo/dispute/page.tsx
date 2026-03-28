@@ -57,30 +57,44 @@ interface StepResult {
 
 const STORAGE_KEY = "whistle-dispute-demo"
 
-function loadSaved() {
-  if (typeof window === "undefined") return null
+function loadCache(): StepResult[] {
+  if (typeof window === "undefined") return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
 }
 
 export default function DisputePathPage() {
-  const saved = loadSaved()
-  const [currentStep, setCurrentStep] = useState(saved?.currentStep ?? 0)
-  const [completedSteps, setCompletedSteps] = useState<number[]>(saved?.completedSteps ?? [])
+  const [currentStep, setCurrentStep] = useState(0)
+  const [completedSteps, setCompletedSteps] = useState<number[]>([])
   const [loadingStep, setLoadingStep] = useState<number | null>(null)
-  const [results, setResults] = useState<StepResult[]>(saved?.results ?? [])
+  const [results, setResults] = useState<StepResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [cache, setCache] = useState<StepResult[]>([])
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ currentStep, completedSteps, results }))
-  }, [currentStep, completedSteps, results])
+  useEffect(() => { setCache(loadCache()) }, [])
+
+  const saveCache = (updated: StepResult[]) => {
+    setCache(updated)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+  }
 
   const runStep = async (stepIndex: number) => {
     const step = steps[stepIndex]
     setLoadingStep(stepIndex)
     setError(null)
+
+    const cached = cache.find((r) => r.step === step.id)
+    if (cached) {
+      await new Promise((r) => setTimeout(r, 2000))
+      setResults((prev) => [...prev, cached])
+      setCompletedSteps((prev) => [...prev, stepIndex])
+      setCurrentStep(stepIndex + 1)
+      toast.success(`${step.label} completed successfully`)
+      setLoadingStep(null)
+      return
+    }
 
     try {
       const res = await fetch("/api/demo/dispute", {
@@ -95,9 +109,11 @@ export default function DisputePathPage() {
         throw new Error(data.error || "Failed to execute step")
       }
 
-      setResults((prev) => [...prev, { step: step.id, data }])
+      const entry: StepResult = { step: step.id, data }
+      setResults((prev) => [...prev, entry])
       setCompletedSteps((prev) => [...prev, stepIndex])
       setCurrentStep(stepIndex + 1)
+      saveCache([...cache, entry])
       toast.success(`${step.label} completed successfully`)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error"
@@ -113,6 +129,7 @@ export default function DisputePathPage() {
     setCompletedSteps([])
     setResults([])
     setError(null)
+    setCache([])
     localStorage.removeItem(STORAGE_KEY)
   }
 
